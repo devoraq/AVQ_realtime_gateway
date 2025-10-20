@@ -2,11 +2,11 @@ package inbound_http
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 
 	"github.com/DENFNC/devPractice/infrastructure/config"
-	"github.com/DENFNC/devPractice/internal/adapters/inbound/handlers"
 	websocket "github.com/DENFNC/devPractice/internal/adapters/inbound/ws"
 )
 
@@ -25,12 +25,7 @@ func NewServer(log *slog.Logger, store websocket.SessionStore, cfg *config.HTTPC
 		Addr:    cfg.Address,
 	}
 
-	sendService := handlers.NewLoggingMessageService(log.With("handler", "send"))
-
 	router := websocket.NewHandlerChain()
-	router.HandleFunc(websocket.EnvMessage, func(ctx context.Context, session *websocket.Session, env websocket.Envelope) error {
-		return handlers.HandleSend(ctx, session, env, sendService)
-	})
 
 	gw := websocket.NewGateway(store, router)
 
@@ -53,5 +48,11 @@ func (s *Server) Start() error {
 	if err := s.server.ListenAndServe(); err != nil {
 		return err
 	}
+	return nil
+}
+
+func testHandler(ctx context.Context, s *websocket.Session, env websocket.Envelope) error {
+	fmt.Printf("test handler: session=%s type=%s payload=%s\n",
+		s.ID, env.Type, string(env.Payload))
 	return nil
 }

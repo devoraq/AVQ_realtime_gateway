@@ -3,6 +3,7 @@ package config
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/ilyakaznacheev/cleanenv"
 )
@@ -20,6 +21,7 @@ type RedisConfig struct {
 	Address  string `yaml:"address" required:"true"`
 	Password string `yaml:"password"`
 	DB       int    `yaml:"db"`
+	Timeout  time.Duration
 }
 
 func LoadConfig(path string) *Config {

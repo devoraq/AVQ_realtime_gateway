@@ -10,10 +10,6 @@ var ErrNoRouteMatched = errors.New("websocket: no route matched envelope")
 
 type TypeMessage string
 
-const (
-	EnvMessage TypeMessage = "message"
-)
-
 type Envelope struct {
 	Type TypeMessage `json:"type"`
 	// RequestID uuid.UUID       `json:"id"`
