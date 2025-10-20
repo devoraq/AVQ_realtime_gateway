@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package proto.service.v1;
+
+import "buf/validate/validate.proto";
+
+option go_package = "github.com/DENFNC/devPractice/realtime_gateway/gen/go/service/v1;pb";
+
+
+
+service AuthService {}
+
+message AuthRequest {}
+
+message AuthResponse {}
+
