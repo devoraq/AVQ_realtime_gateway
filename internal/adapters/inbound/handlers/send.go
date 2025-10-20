@@ -1,20 +1,11 @@
 package handlers
 
-import (
-	"net/http"
+import websocket "github.com/DENFNC/devPractice/internal/adapters/inbound/ws"
 
-	websocket "github.com/DENFNC/devPractice/internal/adapters/inbound/ws"
-)
+type HandlerSendMessage struct{}
 
-type SendHandler struct{}
+func NewHandlerSendMessage(router *websocket.HandlerChain) *HandlerSendMessage {
+	// router.HandleFunc()
 
-func NewSendHandler(mux *http.ServeMux) *SendHandler {
-	handler := &SendHandler{}
-	{
-		mux.HandleFunc("realtime/ws/", nil)
-	}
-
-	return handler
+	return &HandlerSendMessage{}
 }
-
-func (sh *SendHandler) HandleSendMessage(session *websocket.Session, env websocket.Envelope) {}
