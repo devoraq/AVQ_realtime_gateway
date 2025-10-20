@@ -8,7 +8,12 @@ import (
 )
 
 type Config struct {
+	HTTPConfig  `yaml:"http"`
 	RedisConfig `yaml:"redis"`
+}
+
+type HTTPConfig struct {
+	Address string `yaml:"address"`
 }
 
 type RedisConfig struct {

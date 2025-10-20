@@ -1,5 +1,8 @@
 app:
 
+http:
+  address: "localhost:8000"
+
 redis:
   address: "localhost:6379"
   password: ""

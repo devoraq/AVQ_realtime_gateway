@@ -4,21 +4,26 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/DENFNC/devPractice/infrastructure/config"
 	"github.com/redis/go-redis/v9"
 )
 
-type ScanResult map[string]string
+var ErrRedisPingFailed = errors.New("redis ping failed")
 
 type Redis struct {
+	log    *slog.Logger
 	client *redis.Client
 }
 
-func NewRedis(cfg *config.RedisConfig) *Redis {
+func NewRedis(cfg *config.RedisConfig, log *slog.Logger) *Redis {
 	if cfg == nil {
 		panic("redis config cannot be nil")
+	}
+	if log == nil {
+		panic("logger cannot be nil")
 	}
 
 	redisConfig := &redis.Options{
@@ -28,6 +33,17 @@ func NewRedis(cfg *config.RedisConfig) *Redis {
 	}
 
 	client := redis.NewClient(redisConfig)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	if err := client.Ping(ctx); err != nil {
+		log.Error(
+			ErrRedisPingFailed.Error(),
+			slog.String("addr", cfg.Address),
+			slog.Int("DB", cfg.DB),
+		)
+	}
 
 	return &Redis{
 		client: client,
@@ -70,7 +86,7 @@ func (r *Redis) Remove(ctx context.Context, keys ...string) error {
 	return nil
 }
 
-func (r *Redis) ScanKeys(ctx context.Context, match string, step int64) (ScanResult, error) {
+func (r *Redis) ScanKeys(ctx context.Context, match string, step int64) (map[string]string, error) {
 	iter := r.client.Scan(ctx, 0, match, step).Iterator()
 	result := make(map[string]string)
 
