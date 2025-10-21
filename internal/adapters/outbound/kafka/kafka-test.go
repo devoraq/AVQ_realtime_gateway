@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/DENFNC/devPractice/infrastructure/config"
+	"github.com/DENFNC/devPractice/internal/adapters/outbound/config"
 )
 
 const configPath = "config/config.yaml"
