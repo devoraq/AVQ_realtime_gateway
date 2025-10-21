@@ -11,6 +11,7 @@ import (
 type Config struct {
 	HTTPConfig  `yaml:"http"`
 	RedisConfig `yaml:"redis"`
+	KafkaConfig `yaml:"kafka"`
 }
 
 type HTTPConfig struct {
@@ -18,10 +19,17 @@ type HTTPConfig struct {
 }
 
 type RedisConfig struct {
-	Address  string `yaml:"address" required:"true"`
-	Password string `yaml:"password"`
-	DB       int    `yaml:"db"`
-	Timeout  time.Duration
+	Address  string        `yaml:"address" required:"true"`
+	Password string        `yaml:"password"`
+	DB       int           `yaml:"db"`
+	Timeout  time.Duration `yaml:"timeout"`
+}
+
+type KafkaConfig struct {
+	Address   string `yaml:"address"`
+	TestTopic string `yaml:"test-topic"`
+	GroupID   string `yaml:"group-id"`
+	Network   string `yaml:"network"`
 }
 
 func LoadConfig(path string) *Config {

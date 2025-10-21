@@ -8,3 +8,9 @@ redis:
   password: ""
   db: 0
   timeout: 5s
+
+kafka:
+  address: "127.0.0.1:9092"
+  test-topic: "test-topic"
+  group-id: "test-group"
+  network: "tcp"
