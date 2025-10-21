@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/DENFNC/devPractice/infrastructure/config"
+	"github.com/DENFNC/devPractice/internal/adapters/outbound/config"
 	"github.com/redis/go-redis/v9"
 )
 

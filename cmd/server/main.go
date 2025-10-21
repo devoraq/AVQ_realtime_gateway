@@ -4,9 +4,9 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/DENFNC/devPractice/infrastructure/config"
-	"github.com/DENFNC/devPractice/infrastructure/logger"
-	kvstore "github.com/DENFNC/devPractice/infrastructure/store/kv-store"
+	"github.com/DENFNC/devPractice/internal/adapters/outbound/config"
+	"github.com/DENFNC/devPractice/internal/adapters/outbound/logger"
+	kvstore "github.com/DENFNC/devPractice/internal/adapters/outbound/store/kv-store"
 	inbound_http "github.com/DENFNC/devPractice/internal/app/http"
 )
 

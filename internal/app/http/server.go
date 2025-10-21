@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/DENFNC/devPractice/infrastructure/config"
 	websocket "github.com/DENFNC/devPractice/internal/adapters/inbound/ws"
+	"github.com/DENFNC/devPractice/internal/adapters/outbound/config"
 )
 
 type Server struct {
