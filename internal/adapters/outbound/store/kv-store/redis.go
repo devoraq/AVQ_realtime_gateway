@@ -37,12 +37,14 @@ func NewRedis(cfg *config.RedisConfig, log *slog.Logger) *Redis {
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
 	defer cancel()
 
-	if err := client.Ping(ctx); err != nil {
+	if err := client.Ping(ctx).Err(); err != nil {
 		log.Error(
 			ErrRedisPingFailed.Error(),
 			slog.String("addr", cfg.Address),
 			slog.Int("DB", cfg.DB),
+			slog.String("error", err.Error()),
 		)
+		panic(err)
 	}
 
 	return &Redis{

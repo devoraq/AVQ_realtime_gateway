@@ -9,17 +9,31 @@ import (
 	"github.com/gobwas/ws"
 )
 
+// SessionStore описывает абстракцию для хранения активных WebSocket-сессий.
+// Типичная реализация использует Redis или in-memory map.
 type SessionStore interface {
 	Add(ctx context.Context, key string, value any, expiration time.Duration) error
 	Remove(ctx context.Context, keys ...string) error
 	ScanKeys(ctx context.Context, match string, step int64) (map[string]string, error)
 }
 
+// Gateway отвечает за апгрейд HTTP-соединений в WebSocket и регистрацию
+// сессий в хранилище.
+//
+// Пример:
+//
+//	store := redis.NewSessionStore(...)
+//	router := websocket.NewHandlerChain()
+//	gateway := websocket.NewGateway(store, router)
+//	http.HandleFunc("/ws", gateway.HandleWS)
+//	_ = http.ListenAndServe(":8080", nil)
 type Gateway struct {
 	store  SessionStore
 	router Router
 }
 
+// NewGateway создает новый экземпляр шлюза, валидируя переданные зависимости.
+// Паникует, если store или router не заданы.
 func NewGateway(store SessionStore, router Router) *Gateway {
 	if store == nil {
 		panic("session store cannot be nil")
@@ -34,6 +48,9 @@ func NewGateway(store SessionStore, router Router) *Gateway {
 	}
 }
 
+// HandleWS обрабатывает HTTP-запрос на апгрейд в WebSocket, создает сессию,
+// регистрирует ее в хранилище и запускает цикл чтения сообщений. Функция
+// предназначена для использования как http.HandlerFunc.
 func (g *Gateway) HandleWS(w http.ResponseWriter, r *http.Request) {
 	conn, _, _, err := ws.UpgradeHTTP(r, w)
 	if err != nil {
@@ -67,8 +84,10 @@ func (g *Gateway) HandleWS(w http.ResponseWriter, r *http.Request) {
 			}
 		}()
 
-		if err := session.ReadLoop(sessionCtx); err != nil {
-			log.Printf("session %s read loop error: %v", session.ID, err)
-		}
+		go func(ctx context.Context) {
+			if err := session.ReadLoop(ctx); err != nil {
+				log.Printf("session %s read loop error: %v", session.ID, err)
+			}
+		}(sessionCtx)
 	}()
 }
