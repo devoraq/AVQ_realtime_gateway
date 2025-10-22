@@ -1,2 +1,6 @@
 mcp-shell.log
 .vscode
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
