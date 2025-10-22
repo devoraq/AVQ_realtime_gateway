@@ -1,6 +1,7 @@
 package happ
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -47,7 +48,7 @@ func New(deps *ServerDeps) *HTTPServer {
 }
 
 func (s *HTTPServer) MustStart() {
-	if err := s.Start(); err != nil {
+	if err := s.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		s.log.Error(
 			"HTTP server error to start",
 			slog.String("error", err.Error()),
