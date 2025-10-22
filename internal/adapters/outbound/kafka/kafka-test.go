@@ -11,7 +11,7 @@ const configPath = "config/config.yaml"
 
 func TestKafka(log *slog.Logger) error {
 	cfg := config.LoadConfig(configPath)
-	k := NewKafka(&cfg.KafkaConfig, log)
+	k := NewKafka(cfg.KafkaConfig, log)
 	ctx := context.Background()
 
 	go StartConsuming(k.consumer)

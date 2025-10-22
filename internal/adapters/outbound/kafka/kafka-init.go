@@ -54,5 +54,5 @@ func NewTopic(network, address, topic string, partition int) {
 		}
 		time.Sleep(time.Second)
 	}
-	log.Printf("Topic %s created successfuly on %s", topic, address)
+	log.Printf("Topic %s created successfully on %s", topic, address)
 }

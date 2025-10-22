@@ -8,10 +8,10 @@ import (
 
 var ErrNoRouteMatched = errors.New("websocket: no route matched envelope")
 
-type TypeMessage string
+type HandlerFunc func(ctx context.Context, s *Session, env Envelope) error
 
 type Envelope struct {
-	Type TypeMessage `json:"type"`
+	Type string `json:"type"`
 	// RequestID uuid.UUID       `json:"id"`
 	// Timestamp int64           `json:"timestamp"`
 	Payload json.RawMessage `json:"payload"`
@@ -22,18 +22,16 @@ type Router interface {
 }
 
 type HandlerChain struct {
-	handlers map[TypeMessage]HandlerFunc
+	handlers map[string]HandlerFunc
 }
-
-type HandlerFunc func(ctx context.Context, s *Session, env Envelope) error
 
 func NewHandlerChain() *HandlerChain {
 	return &HandlerChain{
-		handlers: make(map[TypeMessage]HandlerFunc),
+		handlers: make(map[string]HandlerFunc),
 	}
 }
 
-func (c *HandlerChain) HandleFunc(messageType TypeMessage, handler HandlerFunc) {
+func (c *HandlerChain) HandleFunc(messageType string, handler HandlerFunc) {
 	if messageType == "" || handler == nil {
 		return
 	}

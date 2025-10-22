@@ -1,4 +1,5 @@
 app:
+  websocket_enabled: true
 
 http:
   address: "localhost:8000"

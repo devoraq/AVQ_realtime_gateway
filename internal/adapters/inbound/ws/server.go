@@ -68,11 +68,9 @@ func (s *Session) handleOperation(ctx context.Context, op ws.OpCode, payload []b
 		if err := json.Unmarshal(payload, &env); err != nil {
 			return err
 		}
-
 		if s.router == nil {
 			return ErrNoRouteMatched
 		}
-
 		return s.router.Route(ctx, s, env)
 	case ws.OpPing:
 		return wsutil.WriteServerMessage(s.conn, ws.OpPong, nil)

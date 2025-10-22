@@ -9,9 +9,14 @@ import (
 )
 
 type Config struct {
-	HTTPConfig  `yaml:"http"`
-	RedisConfig `yaml:"redis"`
-	KafkaConfig `yaml:"kafka"`
+	*AppConfig   `yaml:"app"`
+	*HTTPConfig  `yaml:"http"`
+	*RedisConfig `yaml:"redis"`
+	*KafkaConfig `yaml:"kafka"`
+}
+
+type AppConfig struct {
+	WebSocket bool `yaml:"websocket_enabled"`
 }
 
 type HTTPConfig struct {
