@@ -2,7 +2,7 @@ package kafka
 
 import (
 	"context"
-	"log"
+	"log/slog"
 
 	"github.com/segmentio/kafka-go"
 )
@@ -18,29 +18,41 @@ func createReader(address, topic, groupID string) *kafka.Reader {
 	return r
 }
 
-// Начинает чтение топика для консьюмера, которого получила на вход.
-// Запускать как горутину.
+// StartConsuming запускает бесконечный цикл чтения сообщений для переданного
+// консьюмера. Подходит для исполнения в отдельной горутине и логирует
+// результаты обработки каждого сообщения.
 //
 // Пример использования:
 //
 // consumer := createReader(cfg.Address, cfg.MyTopic, cfg.MyGroupID, 69)
-// go StartConsuming(consumer)
-func StartConsuming(r *kafka.Reader) {
-	ctx := context.Background()
+// go StartConsuming(ctx, log, consumer)
+func StartConsuming(ctx context.Context, log *slog.Logger, r *kafka.Reader) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	for {
-		m, err := r.FetchMessage(context.Background())
+		m, err := r.FetchMessage(ctx)
 		if err != nil {
-			log.Printf("Error reading message: %v\n", err)
+			log.Error("kafka read message failed", "err", err)
 			break
 		}
-		log.Printf("New message at topic/offset [%v/%v]: %s\n",
-			m.Topic, m.Offset, string(m.Value))
+		log.Info("kafka message received",
+			"topic", m.Topic,
+			"offset", m.Offset,
+			"value", string(m.Value),
+		)
 
 		if err := r.CommitMessages(ctx, m); err != nil {
-			log.Printf("Error committing message: %v\n", err)
+			log.Error("kafka commit message failed",
+				"topic", m.Topic,
+				"offset", m.Offset,
+				"err", err,
+			)
 			break
 		}
-		log.Printf("Committed message at topic/offset [%v/%v]\n",
-			m.Topic, m.Offset)
+		log.Info("kafka message committed",
+			"topic", m.Topic,
+			"offset", m.Offset,
+		)
 	}
 }

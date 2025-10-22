@@ -1,8 +1,6 @@
-package inbound_http
+package happ
 
 import (
-	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -10,24 +8,31 @@ import (
 	"github.com/DENFNC/devPractice/internal/adapters/outbound/config"
 )
 
-type Server struct {
+type HTTPServer struct {
 	log    *slog.Logger
 	server *http.Server
 }
 
-func NewServer(log *slog.Logger, store websocket.SessionStore, cfg *config.HTTPConfig) *Server {
+type ServerDeps struct {
+	Log *slog.Logger
+	Cfg *config.HTTPConfig
+
+	Store websocket.SessionStore
+}
+
+func New(deps *ServerDeps) *HTTPServer {
 	const op = "Server.NewServer"
-	log = log.With("op", op)
+	log := deps.Log.With("op", op)
 
 	mux := http.NewServeMux()
 	server := &http.Server{
 		Handler: mux,
-		Addr:    cfg.Address,
+		Addr:    deps.Cfg.Address,
 	}
 
 	router := websocket.NewHandlerChain()
 
-	gw := websocket.NewGateway(store, router)
+	gw := websocket.NewGateway(deps.Store, router)
 
 	mux.HandleFunc("/realtime/ws", gw.HandleWS)
 	log.Info(
@@ -35,13 +40,23 @@ func NewServer(log *slog.Logger, store websocket.SessionStore, cfg *config.HTTPC
 		slog.String("address", server.Addr),
 	)
 
-	return &Server{
+	return &HTTPServer{
 		log:    log,
 		server: server,
 	}
 }
 
-func (s *Server) Start() error {
+func (s *HTTPServer) MustStart() {
+	if err := s.Start(); err != nil {
+		s.log.Error(
+			"HTTP server error to start",
+			slog.String("error", err.Error()),
+		)
+		panic(err)
+	}
+}
+
+func (s *HTTPServer) Start() error {
 	s.log.Info("HTTP server starting",
 		slog.String("address", s.server.Addr),
 	)
@@ -51,8 +66,10 @@ func (s *Server) Start() error {
 	return nil
 }
 
-func testHandler(ctx context.Context, s *websocket.Session, env websocket.Envelope) error {
-	fmt.Printf("test handler: session=%s type=%s payload=%s\n",
-		s.ID, env.Type, string(env.Payload))
+func (s *HTTPServer) Stop() error {
+	s.log.Info("HTTP server stopping")
+	if err := s.server.Close(); err != nil {
+		return err
+	}
 	return nil
 }

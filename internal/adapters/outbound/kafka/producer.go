@@ -2,7 +2,7 @@ package kafka
 
 import (
 	"context"
-	"log"
+	"log/slog"
 
 	"github.com/segmentio/kafka-go"
 )
@@ -18,14 +18,15 @@ func createWriter(address, topic string) *kafka.Writer {
 	return w
 }
 
-// Пишет сообщение в топик продюсера, которого получает на вход.
+// WriteMessage отправляет переданное сообщение через подготовленный продюсер,
+// фиксируя ошибки в журнале и возвращая их вызывающему коду.
 //
 // Пример использования:
 //
 // msg := []byte("Some message as a byte slice")
-// err := WriteMessage(producer, ctx, msg)
+// err := WriteMessage(ctx, log, producer, msg)
 // if err != nil {*обработка ошибки*}
-func WriteMessage(w *kafka.Writer, ctx context.Context, msg []byte) error {
+func WriteMessage(ctx context.Context, log *slog.Logger, w *kafka.Writer, msg []byte) error {
 	err := w.WriteMessages(ctx,
 		kafka.Message{
 			Key:   nil,
@@ -33,7 +34,7 @@ func WriteMessage(w *kafka.Writer, ctx context.Context, msg []byte) error {
 		},
 	)
 	if err != nil {
-		log.Printf("Failed to write message: %v", err)
+		log.Error("kafka write message failed", "err", err)
 		return err
 	}
 	return nil
