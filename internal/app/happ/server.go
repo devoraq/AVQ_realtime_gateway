@@ -1,6 +1,7 @@
 package happ
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -36,6 +37,7 @@ func New(deps *ServerDeps) *HTTPServer {
 	gw := websocket.NewGateway(deps.Store, router)
 
 	mux.HandleFunc("/realtime/ws", gw.HandleWS)
+
 	log.Info(
 		"Successful HTTP upgraded to WebSocket",
 		slog.String("address", server.Addr),
@@ -67,10 +69,7 @@ func (s *HTTPServer) Start() error {
 	return nil
 }
 
-func (s *HTTPServer) Stop() error {
-	s.log.Info("HTTP server stopping")
-	if err := s.server.Close(); err != nil {
-		return err
-	}
-	return nil
+func (s *HTTPServer) Stop(ctx context.Context) error {
+	defer s.log.Info("HTTP server stopping")
+	return s.server.Shutdown(ctx)
 }

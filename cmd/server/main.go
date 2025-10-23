@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -9,7 +10,6 @@ import (
 
 	"github.com/DENFNC/devPractice/internal/adapters/outbound/config"
 	"github.com/DENFNC/devPractice/internal/adapters/outbound/logger"
-	kvstore "github.com/DENFNC/devPractice/internal/adapters/outbound/store/kv-store"
 	"github.com/DENFNC/devPractice/internal/app"
 )
 
@@ -19,35 +19,28 @@ func main() {
 	cfg := config.LoadConfig(configPath)
 	log := initLogger()
 
-	store := kvstore.NewRedis(cfg.RedisConfig, log)
-
 	app := app.New(&app.AppDeps{
-		Log:   log,
-		Cfg:   cfg,
-		Store: store,
+		Log: log,
+		Cfg: cfg,
 	})
 
 	app.StartAsync()
 
-	sig := make(chan os.Signal, 2)
+	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT)
 
-	done := make(chan struct{})
+	<-sig
 
-	go func() {
-		select {
-		case <-sig:
-			log.Info("Shutting down server...")
-			app.Shutdown()
-			close(done)
-			return
-		case <-time.After(30 * time.Second):
-			log.Info("Shutting down server due to timeout...")
-			os.Exit(1)
-		}
-	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
 
-	<-done
+	if err := app.Shutdown(ctx); err != nil {
+		log.Error(
+			"Error shutdown app",
+			slog.String("err", err.Error()),
+		)
+		os.Exit(1)
+	}
 }
 
 func initLogger() *slog.Logger {

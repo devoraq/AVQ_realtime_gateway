@@ -71,23 +71,19 @@ func (g *Gateway) HandleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go func() {
-		sessionCtx, cancel := context.WithCancel(r.Context())
-		defer cancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-		defer func() {
-			if err := g.store.Remove(context.Background(), session.ID.String()); err != nil {
-				log.Printf("failed to remove session %s: %v", session.ID, err)
-			}
-			if err := session.Close(); err != nil {
-				log.Printf("failed to close session %s: %v", session.ID, err)
-			}
-		}()
-
-		go func(ctx context.Context) {
-			if err := session.ReadLoop(ctx); err != nil {
-				log.Printf("session %s read loop error: %v", session.ID, err)
-			}
-		}(sessionCtx)
+	defer func() {
+		if err := g.store.Remove(context.Background(), session.ID.String()); err != nil {
+			log.Printf("failed to remove session %s: %v", session.ID, err)
+		}
+		if err := session.Close(); err != nil {
+			log.Printf("failed to close session %s: %v", session.ID, err)
+		}
 	}()
+
+	if err := session.ReadLoop(ctx); err != nil {
+		log.Printf("session %s read loop error: %v", session.ID, err)
+	}
 }

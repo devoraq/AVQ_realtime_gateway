@@ -14,42 +14,81 @@ import (
 var ErrRedisPingFailed = errors.New("redis ping failed")
 
 type Redis struct {
-	log    *slog.Logger
+	name   string
 	client *redis.Client
+	deps   *RedisDeps
 }
 
-func NewRedis(cfg *config.RedisConfig, log *slog.Logger) *Redis {
-	if cfg == nil {
+type RedisDeps struct {
+	Log *slog.Logger
+	Cfg *config.RedisConfig
+}
+
+func NewRedis(deps *RedisDeps) *Redis {
+	if deps.Cfg == nil {
 		panic("redis config cannot be nil")
 	}
-	if log == nil {
+	if deps.Log == nil {
 		panic("logger cannot be nil")
 	}
 
-	redisConfig := &redis.Options{
-		Addr:     cfg.Address,
-		Password: cfg.Password,
-		DB:       cfg.DB,
+	opts := &redis.Options{
+		Addr:     deps.Cfg.Address,
+		Password: deps.Cfg.Password,
+		DB:       deps.Cfg.DB,
 	}
 
-	client := redis.NewClient(redisConfig)
-
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
-	defer cancel()
-
-	if err := client.Ping(ctx).Err(); err != nil {
-		log.Error(
-			ErrRedisPingFailed.Error(),
-			slog.String("addr", cfg.Address),
-			slog.Int("DB", cfg.DB),
-			slog.String("error", err.Error()),
-		)
-		panic(err)
-	}
+	client := redis.NewClient(opts)
 
 	return &Redis{
+		name:   "redis",
 		client: client,
+		deps:   deps,
 	}
+}
+
+func (r *Redis) Name() string { return r.name }
+
+func (r *Redis) Start(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, r.deps.Cfg.Timeout)
+	defer cancel()
+
+	if err := r.client.Ping(ctx).Err(); err != nil {
+		r.deps.Log.Error(
+			ErrRedisPingFailed.Error(),
+			slog.String("addr", r.deps.Cfg.Address),
+			slog.Int("DB", r.deps.Cfg.DB),
+			slog.String("error", err.Error()),
+		)
+		return err
+	}
+
+	r.deps.Log.Info("Connected to Redis",
+		slog.String("addr", r.deps.Cfg.Address),
+		slog.Int("DB", r.deps.Cfg.DB),
+	)
+
+	return nil
+}
+
+func (r *Redis) Stop(ctx context.Context) error {
+	if err := r.client.Close(); err != nil {
+		r.deps.Log.Error(
+			"failed to close redis connection",
+			slog.String("addr", r.deps.Cfg.Address),
+			slog.Int("DB", r.deps.Cfg.DB),
+			slog.String("error", err.Error()),
+		)
+		return err
+	}
+
+	r.deps.Log.Info(
+		"Redis connection closed",
+		slog.String("addr", r.deps.Cfg.Address),
+		slog.Int("DB", r.deps.Cfg.DB),
+	)
+
+	return nil
 }
 
 func (r *Redis) Add(ctx context.Context, key string, value any, expiration time.Duration) error {

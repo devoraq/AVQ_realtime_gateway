@@ -94,6 +94,7 @@ func (s *Session) handleOperation(ctx context.Context, op ws.OpCode, payload []b
 	switch op {
 	case ws.OpText:
 		var env Envelope
+
 		if err := json.Unmarshal(payload, &env); err != nil {
 			return err
 		}

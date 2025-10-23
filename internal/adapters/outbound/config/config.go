@@ -21,10 +21,8 @@ type Config struct {
 	*KafkaConfig `yaml:"kafka"`
 }
 
-// AppConfig описывает параметры верхнеуровневого приложения, например
-// включает ли оно поддержку WebSocket-транспорта.
+// AppConfig описывает параметры верхнеуровневого приложения
 type AppConfig struct {
-	WebSocket bool `yaml:"websocket_enabled"`
 }
 
 // HTTPConfig хранит настройки HTTP-сервера, включая bind-адрес, который
