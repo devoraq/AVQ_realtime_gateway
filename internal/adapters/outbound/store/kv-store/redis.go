@@ -60,7 +60,7 @@ func (r *Redis) Start(ctx context.Context) error {
 		return err
 	}
 
-	r.deps.Log.Info("Connected to Redis",
+	r.deps.Log.Debug("Connected to Redis",
 		slog.String("addr", r.deps.Cfg.Address),
 		slog.Int("DB", r.deps.Cfg.DB),
 	)
@@ -88,7 +88,7 @@ func (r *Redis) Stop(ctx context.Context) error {
 		return err
 	}
 
-	r.deps.Log.Info(
+	r.deps.Log.Debug(
 		"Redis connection closed",
 		slog.String("addr", r.deps.Cfg.Address),
 		slog.Int("DB", r.deps.Cfg.DB),

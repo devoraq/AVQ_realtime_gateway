@@ -66,7 +66,7 @@ func (k *Kafka) Start(ctx context.Context) error {
 	k.consumer = createReader(k.deps.Cfg.Address, k.deps.Cfg.TestTopic, k.deps.Cfg.GroupID)
 	k.producer = createWriter(k.deps.Cfg.Address, k.deps.Cfg.TestTopic)
 
-	k.deps.Log.Info(
+	k.deps.Log.Debug(
 		"Connected to Kafka",
 		slog.String("network", k.deps.Cfg.Network),
 		slog.String("address", k.deps.Cfg.Address),
@@ -105,7 +105,7 @@ func (k *Kafka) Stop(ctx context.Context) error {
 		}
 	}
 
-	k.deps.Log.Info(
+	k.deps.Log.Debug(
 		"Kafka connections closed",
 		slog.String("address", k.deps.Cfg.Address),
 		slog.String("group_id", k.deps.Cfg.GroupID),
@@ -159,7 +159,7 @@ func (k *Kafka) StartConsuming(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			k.deps.Log.Info("Kafka consumer stopped by context")
+			k.deps.Log.Debug("Kafka consumer stopped by context")
 			return
 		default:
 		}
@@ -167,7 +167,7 @@ func (k *Kafka) StartConsuming(ctx context.Context) {
 		m, err := k.consumer.FetchMessage(ctx)
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
-				k.deps.Log.Info("Kafka consumer context canceled")
+				k.deps.Log.Debug("Kafka consumer context canceled")
 				return
 			}
 			k.deps.Log.Error("kafka read message failed", "err", err)
@@ -175,7 +175,7 @@ func (k *Kafka) StartConsuming(ctx context.Context) {
 			time.Sleep(5 * time.Second)
 			continue
 		}
-		k.deps.Log.Info("kafka message received",
+		k.deps.Log.Debug("kafka message received",
 			"topic", m.Topic,
 			"offset", m.Offset,
 			"value", string(m.Value),
@@ -190,7 +190,7 @@ func (k *Kafka) StartConsuming(ctx context.Context) {
 			time.Sleep(2 * time.Second)
 			continue
 		}
-		k.deps.Log.Info("kafka message committed",
+		k.deps.Log.Debug("kafka message committed",
 			"topic", m.Topic,
 			"offset", m.Offset,
 		)
