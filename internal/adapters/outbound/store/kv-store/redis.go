@@ -50,9 +50,6 @@ func NewRedis(deps *RedisDeps) *Redis {
 func (r *Redis) Name() string { return r.name }
 
 func (r *Redis) Start(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, r.deps.Cfg.Timeout)
-	defer cancel()
-
 	if err := r.client.Ping(ctx).Err(); err != nil {
 		r.deps.Log.Error(
 			ErrRedisPingFailed.Error(),
