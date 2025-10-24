@@ -64,6 +64,7 @@ func (g *Gateway) HandleWS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to create session", http.StatusInternalServerError)
 		return
 	}
+	defer g.sessionRemove(session)
 
 	if err := g.store.Add(r.Context(), session.ID.String(), session.UserID.String(), 0); err != nil {
 		_ = session.Close()
@@ -74,16 +75,16 @@ func (g *Gateway) HandleWS(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	defer func() {
-		if err := g.store.Remove(context.Background(), session.ID.String()); err != nil {
-			log.Printf("failed to remove session %s: %v", session.ID, err)
-		}
-		if err := session.Close(); err != nil {
-			log.Printf("failed to close session %s: %v", session.ID, err)
-		}
-	}()
-
 	if err := session.ReadLoop(ctx); err != nil {
 		log.Printf("session %s read loop error: %v", session.ID, err)
+	}
+}
+
+func (g *Gateway) sessionRemove(session *Session) {
+	if err := g.store.Remove(context.Background(), session.ID.String()); err != nil {
+		log.Printf("failed to remove session %s: %v", session.ID, err)
+	}
+	if err := session.Close(); err != nil {
+		log.Printf("failed to close session %s: %v", session.ID, err)
 	}
 }

@@ -43,7 +43,6 @@ func NewKafka(cfg *config.KafkaConfig, log *slog.Logger) *Kafka {
 		return nil
 	}
 
-	go NewTopic(cfg.Network, cfg.Address, cfg.TestTopic, 0, log)
 	consumer := createReader(cfg.Address, cfg.TestTopic, cfg.GroupID)
 	producer := createWriter(cfg.Address, cfg.TestTopic)
 
@@ -54,29 +53,70 @@ func NewKafka(cfg *config.KafkaConfig, log *slog.Logger) *Kafka {
 	}
 }
 
-// NewTopic создает указанный топик или проверяет его наличие, предпринимая
-// несколько попыток подключения к брокеру. При достижении лимита ретраев
-// фиксирует ошибку в логах.
-func NewTopic(network, address, topic string, partition int, log *slog.Logger) {
-	for i := 0; i < maxRetries; i++ {
-		_, err := kafka.DialLeader(context.Background(), network, address, topic, partition)
-		if err == nil {
-			break
-		}
-		log.Error("kafka leader dial failed", "attempt", i+1, "max_attempts", maxRetries, "topic", topic, "err", err)
-		if i == maxRetries-1 {
-			log.Error("kafka leader dial exhausted", "topic", topic, "err", err)
-			return
-		}
-		time.Sleep(time.Second)
-	}
-	log.Info("kafka topic ensured", "topic", topic, "address", address)
-}
-
 func ensureKafkaConnection(ctx context.Context, network, address string) error {
 	conn, err := kafka.DialContext(ctx, network, address)
 	if err != nil {
 		return err
 	}
 	return conn.Close()
+}
+
+// WriteMessage отправляет переданное сообщение через подготовленный продюсер,
+// фиксируя ошибки в журнале и возвращая их вызывающему коду.
+//
+// Пример использования:
+//
+// msg := []byte("Some message as a byte slice")
+// err := WriteMessage(ctx, msg)
+// if err != nil {*обработка ошибки*}
+func (k *Kafka) WriteMessage(ctx context.Context, msg []byte) error {
+	err := k.producer.WriteMessages(ctx,
+		kafka.Message{
+			Key:   nil,
+			Value: msg,
+		},
+	)
+	if err != nil {
+		k.log.Error("kafka write message failed", "err", err)
+		return err
+	}
+	return nil
+}
+
+// StartConsuming запускает бесконечный цикл чтения сообщений для переданного
+// консьюмера. Подходит для исполнения в отдельной горутине и логирует
+// результаты обработки каждого сообщения.
+//
+// Пример использования:
+//
+// go StartConsuming(ctx)
+func (k *Kafka) StartConsuming(ctx context.Context) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	for {
+		m, err := k.consumer.FetchMessage(ctx)
+		if err != nil {
+			k.log.Error("kafka read message failed", "err", err)
+			break
+		}
+		k.log.Info("kafka message received",
+			"topic", m.Topic,
+			"offset", m.Offset,
+			"value", string(m.Value),
+		)
+
+		if err := k.consumer.CommitMessages(ctx, m); err != nil {
+			k.log.Error("kafka commit message failed",
+				"topic", m.Topic,
+				"offset", m.Offset,
+				"err", err,
+			)
+			break
+		}
+		k.log.Info("kafka message committed",
+			"topic", m.Topic,
+			"offset", m.Offset,
+		)
+	}
 }
