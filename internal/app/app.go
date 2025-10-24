@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/DENFNC/devPractice/internal/adapters/outbound/config"
+	"github.com/DENFNC/devPractice/internal/adapters/outbound/kafka"
 	kvstore "github.com/DENFNC/devPractice/internal/adapters/outbound/store/kv-store"
 	"github.com/DENFNC/devPractice/internal/app/happ"
 )
@@ -36,10 +37,15 @@ func New(deps *AppDeps) *App {
 		Cfg: deps.Cfg.RedisConfig,
 	})
 
+	kfk := kafka.NewKafka(&kafka.KafkaDeps{
+		Log: deps.Log,
+		Cfg: deps.Cfg.KafkaConfig,
+	})
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	container.Add(store)
+	container.Add(store, kfk)
 	container.StartAll(ctx)
 
 	hserver := happ.New(&happ.ServerDeps{

@@ -6,53 +6,115 @@ package kafka
 import (
 	"context"
 	"log/slog"
-	"time"
 
 	"github.com/DENFNC/devPractice/internal/adapters/outbound/config"
 	"github.com/segmentio/kafka-go"
 )
 
-const maxRetries = 5
-
 // Kafka инкапсулирует состояния продюсера и консьюмера для единого доступа
 // к возможностям брокера из прикладного кода.
 type Kafka struct {
+	name     string
 	consumer *kafka.Reader
 	producer *kafka.Writer
-	log      *slog.Logger
+	deps     *KafkaDeps
 }
 
-// Создает и наполняет структуру кафки консьюмером, продюсером и логгером.
-// Запускает топики
-// NewKafka принимает конфигурацию брокера и логгер, проверяет доступность
-// соединения, создает служебный топик и возвращает готовый к работе набор
-// продюсер/консьюмер. При ошибке подключения функция логирует сбой и
-// возвращает nil.
-func NewKafka(cfg *config.KafkaConfig, log *slog.Logger) *Kafka {
-	if cfg == nil {
+// KafkaDeps хранит основные зависимости структуры Kafka:
+// логгер и конфигурация кафки.
+type KafkaDeps struct {
+	Log *slog.Logger
+	Cfg *config.KafkaConfig
+}
+
+// NewKafka создает и наполняет структуру кафки базовыми полями:
+// имя компонента и его зависимости.
+func NewKafka(deps *KafkaDeps) *Kafka {
+	if deps.Cfg == nil {
 		panic("Kafka config cannot be nil")
 	}
-	if log == nil {
+	if deps.Log == nil {
 		panic("Logger cannot be nil")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := ensureKafkaConnection(ctx, cfg.Network, cfg.Address); err != nil {
-		log.Error("kafka connection check failed", "err", err)
-		return nil
-	}
-
-	consumer := createReader(cfg.Address, cfg.TestTopic, cfg.GroupID)
-	producer := createWriter(cfg.Address, cfg.TestTopic)
-
 	return &Kafka{
-		consumer: consumer,
-		producer: producer,
-		log:      log,
+		name: "kafka",
+		deps: deps,
 	}
 }
 
+// Метод Name возвращает имя компонента
+func (k *Kafka) Name() string { return k.name }
+
+// Метод Start принимает контекст, проверяет доступность соединения,
+// создает и добавляет в структуру кафки набор продюсер/консьюмер.
+// Логгирует и возвращает ошибку при наличии таковой. При успешном
+// запуске сообщит о нем и вернет nil.
+func (k *Kafka) Start(ctx context.Context) error {
+	if err := ensureKafkaConnection(ctx, k.deps.Cfg.Network, k.deps.Cfg.Address); err != nil {
+		k.deps.Log.Error(
+			"Kafka connection failed",
+			slog.String("network", k.deps.Cfg.Network),
+			slog.String("address", k.deps.Cfg.Address),
+			slog.String("error", err.Error()),
+		)
+		return err
+	}
+
+	k.consumer = createReader(k.deps.Cfg.Address, k.deps.Cfg.TestTopic, k.deps.Cfg.GroupID)
+	k.producer = createWriter(k.deps.Cfg.Address, k.deps.Cfg.TestTopic)
+
+	k.deps.Log.Info(
+		"Connected to Kafka",
+		slog.String("network", k.deps.Cfg.Network),
+		slog.String("address", k.deps.Cfg.Address),
+		slog.String("group_id", k.deps.Cfg.GroupID),
+		slog.String("topic", k.deps.Cfg.TestTopic),
+	)
+	return nil
+}
+
+// Метод Stop принимает контекст, останавливает работу продюсера
+// и консьюмера, возвращает ошибку при неудаче закрытия
+// соединения. Если все прошло по плану, возвращает nil.
+func (k *Kafka) Stop(ctx context.Context) error {
+	if k.consumer != nil {
+		if err := k.consumer.Close(); err != nil {
+			k.deps.Log.Error(
+				"Failed to close Kafka consumer connection",
+				slog.String("address", k.deps.Cfg.Address),
+				slog.String("group_id", k.deps.Cfg.GroupID),
+				slog.String("topic", k.deps.Cfg.TestTopic),
+				slog.String("error", err.Error()),
+			)
+			return err
+		}
+	}
+
+	if k.producer != nil {
+		if err := k.producer.Close(); err != nil {
+			k.deps.Log.Error(
+				"Failed to close Kafka producer connection",
+				slog.String("address", k.deps.Cfg.Address),
+				slog.String("topic", k.deps.Cfg.TestTopic),
+				slog.String("error", err.Error()),
+			)
+			return err
+		}
+	}
+
+	k.deps.Log.Info(
+		"Kafka connections closed",
+		slog.String("address", k.deps.Cfg.Address),
+		slog.String("group_id", k.deps.Cfg.GroupID),
+		slog.String("topic", k.deps.Cfg.TestTopic),
+	)
+	return nil
+}
+
+// ensureKafkaConnection проверяет соединение кафки в указанной сети
+// и по указанному адресу. Возвращает ошибку - результат попытки
+// закрыть соединение по передаваемым параметрам.
 func ensureKafkaConnection(ctx context.Context, network, address string) error {
 	conn, err := kafka.DialContext(ctx, network, address)
 	if err != nil {
@@ -77,7 +139,7 @@ func (k *Kafka) WriteMessage(ctx context.Context, msg []byte) error {
 		},
 	)
 	if err != nil {
-		k.log.Error("kafka write message failed", "err", err)
+		k.deps.Log.Error("kafka write message failed", "err", err)
 		return err
 	}
 	return nil
@@ -97,24 +159,24 @@ func (k *Kafka) StartConsuming(ctx context.Context) {
 	for {
 		m, err := k.consumer.FetchMessage(ctx)
 		if err != nil {
-			k.log.Error("kafka read message failed", "err", err)
+			k.deps.Log.Error("kafka read message failed", "err", err)
 			break
 		}
-		k.log.Info("kafka message received",
+		k.deps.Log.Info("kafka message received",
 			"topic", m.Topic,
 			"offset", m.Offset,
 			"value", string(m.Value),
 		)
 
 		if err := k.consumer.CommitMessages(ctx, m); err != nil {
-			k.log.Error("kafka commit message failed",
+			k.deps.Log.Error("kafka commit message failed",
 				"topic", m.Topic,
 				"offset", m.Offset,
 				"err", err,
 			)
 			break
 		}
-		k.log.Info("kafka message committed",
+		k.deps.Log.Info("kafka message committed",
 			"topic", m.Topic,
 			"offset", m.Offset,
 		)
