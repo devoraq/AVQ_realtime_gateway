@@ -67,7 +67,7 @@ func ensureKafkaConnection(ctx context.Context, network, address string) error {
 // Пример использования:
 //
 // msg := []byte("Some message as a byte slice")
-// err := WriteMessage(ctx, log, producer, msg)
+// err := WriteMessage(ctx, msg)
 // if err != nil {*обработка ошибки*}
 func (k *Kafka) WriteMessage(ctx context.Context, msg []byte) error {
 	err := k.producer.WriteMessages(ctx,
@@ -89,8 +89,7 @@ func (k *Kafka) WriteMessage(ctx context.Context, msg []byte) error {
 //
 // Пример использования:
 //
-// consumer := createReader(cfg.Address, cfg.MyTopic, cfg.MyGroupID, 69)
-// go StartConsuming(ctx, log, consumer)
+// go StartConsuming(ctx)
 func (k *Kafka) StartConsuming(ctx context.Context) {
 	if ctx == nil {
 		ctx = context.Background()
