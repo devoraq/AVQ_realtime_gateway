@@ -5,7 +5,9 @@ package kafka
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/DENFNC/devPractice/internal/adapters/outbound/config"
 	"github.com/segmentio/kafka-go"
@@ -113,14 +115,15 @@ func (k *Kafka) Stop(ctx context.Context) error {
 }
 
 // ensureKafkaConnection проверяет соединение кафки в указанной сети
-// и по указанному адресу. Возвращает ошибку - результат попытки
-// закрыть соединение по передаваемым параметрам.
+// и по указанному адресу. Возвращает ошибку если соединение не удалось,
+// в ином случае возвращает nil.
 func ensureKafkaConnection(ctx context.Context, network, address string) error {
 	conn, err := kafka.DialContext(ctx, network, address)
 	if err != nil {
 		return err
 	}
-	return conn.Close()
+	defer conn.Close()
+	return nil
 }
 
 // WriteMessage отправляет переданное сообщение через подготовленный продюсер,
@@ -153,14 +156,24 @@ func (k *Kafka) WriteMessage(ctx context.Context, msg []byte) error {
 //
 // go StartConsuming(ctx)
 func (k *Kafka) StartConsuming(ctx context.Context) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	for {
+		select {
+		case <-ctx.Done():
+			k.deps.Log.Info("Kafka consumer stopped by context")
+			return
+		default:
+		}
+
 		m, err := k.consumer.FetchMessage(ctx)
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				k.deps.Log.Info("Kafka consumer context canceled")
+				return
+			}
 			k.deps.Log.Error("kafka read message failed", "err", err)
-			break
+
+			time.Sleep(5 * time.Second)
+			continue
 		}
 		k.deps.Log.Info("kafka message received",
 			"topic", m.Topic,
@@ -174,7 +187,8 @@ func (k *Kafka) StartConsuming(ctx context.Context) {
 				"offset", m.Offset,
 				"err", err,
 			)
-			break
+			time.Sleep(2 * time.Second)
+			continue
 		}
 		k.deps.Log.Info("kafka message committed",
 			"topic", m.Topic,
