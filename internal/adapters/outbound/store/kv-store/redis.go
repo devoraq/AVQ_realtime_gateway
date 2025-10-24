@@ -72,6 +72,15 @@ func (r *Redis) Start(ctx context.Context) error {
 }
 
 func (r *Redis) Stop(ctx context.Context) error {
+	if err := r.FlushAsync(ctx); err != nil {
+		r.deps.Log.Error(
+			"failed to flush db redis",
+			slog.String("addr", r.deps.Cfg.Address),
+			slog.Int("DB", r.deps.Cfg.DB),
+			slog.String("error", err.Error()),
+		)
+		return err
+	}
 	if err := r.client.Close(); err != nil {
 		r.deps.Log.Error(
 			"failed to close redis connection",
@@ -145,4 +154,11 @@ func (r *Redis) ScanKeys(ctx context.Context, match string, step int64) (map[str
 	}
 
 	return result, nil
+}
+
+func (r *Redis) FlushAsync(ctx context.Context) error {
+	if _, err := r.client.FlushDBAsync(ctx).Result(); err != nil {
+		return err
+	}
+	return nil
 }

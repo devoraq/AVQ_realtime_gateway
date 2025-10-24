@@ -73,7 +73,7 @@ func (k *Kafka) WriteMessage(ctx context.Context, msg []byte) error {
 	err := k.producer.WriteMessages(ctx,
 		kafka.Message{
 			Key:   nil,
-			Value: []byte(msg),
+			Value: msg,
 		},
 	)
 	if err != nil {
