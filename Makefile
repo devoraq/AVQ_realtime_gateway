@@ -109,7 +109,7 @@ cover: deps ## Coverage summary (text) + report file
 build: deps ## Build binary to ./bin/$(BIN_NAME)
 	$(call _echo,build $(BUILD_DIR)/$(BIN_NAME))
 	@mkdir -p $(BUILD_DIR)
-	@$(GO) build -o $(BUILD_DIR)/$(BIN_NAME) ./...
+	@$(GO) build -o $(BUILD_DIR)/$(BIN_NAME) ./cmd/server
 
 build-race: deps ## Build binary with race detector
 	$(call _echo,build race $(RACE_BIN))
