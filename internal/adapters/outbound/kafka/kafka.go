@@ -27,7 +27,7 @@ type KafkaDeps struct {
 	Cfg *config.KafkaConfig
 }
 
-// NewKafka validates dependencies and prepares the adapter instance
+// NewKafka validates dependencies and prepares the adapter instance.
 func NewKafka(deps *KafkaDeps) *Kafka {
 	if deps.Cfg == nil {
 		panic("Kafka config cannot be nil")
