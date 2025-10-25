@@ -54,7 +54,6 @@ linters:
     #   kv-only: true
     #   static-msg: true
 
-    # ✅ допустимые проверки для spancheck в v2.5.0
     spancheck:
       checks:
         - end           # span должен быть завершён
