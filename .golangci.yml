@@ -12,7 +12,7 @@ linters:
     - staticcheck
     - errcheck
     - errorlint
-    # - wrapcheck
+    - wrapcheck          # ← включён
     - ineffassign
     - unused
     - durationcheck
@@ -24,7 +24,7 @@ linters:
     - bodyclose
     - canonicalheader
     - nosprintfhostport
-    # - sloglint
+    - sloglint
     - loggercheck
     - spancheck
     - gosec
@@ -45,38 +45,28 @@ linters:
     gocyclo:
       min-complexity: 20
 
-    # importas:
-    #   no-unaliased: false
-    #   no-extra-aliases: false
-
-    # sloglint:
-    #   no-mixed-args: true
-    #   kv-only: true
-    #   static-msg: true
-
     spancheck:
-      checks:
-        - end           # span должен быть завершён
-        - record-error  # ошибки должны записываться в span
-        - set-status    # статус спана должен устанавливаться корректно
+      checks: [end, record-error, set-status]
 
-    # чтобы не заваливать return ctx.Err()
-    # wrapcheck:
-    #   ignore-sigs:
-    #     - '^context\.Canceled$'
-    #     - '^context\.DeadlineExceeded$'
+    wrapcheck:
+      ignore-sigs:
+        - errors.New
+        - errors.Join
+        - fmt.Errorf
+        - context.Context.Err
+      ignore-sig-regexps:
+        - '^func \(context\.Context\)\.Err\(\) error$'
+        - '^context\\.Canceled$'
+        - '^context\\.DeadlineExceeded$'
+        - '^io\\.EOF$'
+      ignore-interface-regexps:
+        - '^context\.Context$'
+      extra-ignore-sigs:
+        - '(context.Context).Err(' 
 
   exclusions:
     generated: strict
-    paths:
-      - gen
-      - web
+    paths: [gen, web]
     rules:
-      - path: '_test\.go'
-        linters:
-          - dupl
-          - gocyclo
-          - gosec
-      - path: 'internal/adapters/inbound/handlers/chat\.go'
-        linters:
-          - wrapcheck
+      - path: '_test\\.go$'
+        linters: [dupl, gocyclo, gosec]
