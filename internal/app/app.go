@@ -44,7 +44,7 @@ func New(deps *Deps) *App {
 		Cfg: deps.Cfg.RedisConfig,
 	})
 
-	kfk := kafka.NewKafka(&kafka.Deps{
+	kfk := kafka.NewKafka(&kafka.KafkaDeps{
 		Log: deps.Log,
 		Cfg: deps.Cfg.KafkaConfig,
 	})
