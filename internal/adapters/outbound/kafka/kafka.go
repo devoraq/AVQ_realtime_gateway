@@ -11,7 +11,9 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-// Kafka manages Kafka producer and consumer lifecycle.
+// Kafka управляет жизненным циклом соединений с Kafka:
+// создаёт/закрывает продюсера и консюмера, проверяет доступность брокера
+// и предоставляет базовые операции отправки/чтения сообщений.
 type Kafka struct {
 	name     string
 	consumer *kafka.Reader
@@ -19,15 +21,17 @@ type Kafka struct {
 	deps     *KafkaDeps
 }
 
-// KafkaDeps contains runtime dependencies for the Kafka adapter.
+// KafkaDeps содержит зависимости рантайма для Kafka-адаптера:
+// логгер и конфигурацию подключения к брокеру.
 //
-//nolint:revive
+//nolint:revive // осознанно оставляем имя KafkaDeps
 type KafkaDeps struct {
 	Log *slog.Logger
 	Cfg *config.KafkaConfig
 }
 
-// NewKafka validates dependencies and prepares the adapter instance.
+// NewKafka валидирует переданные зависимости и возвращает экземпляр адаптера.
+// Паника возникает, если отсутствует конфигурация или логгер.
 func NewKafka(deps *KafkaDeps) *Kafka {
 	if deps.Cfg == nil {
 		panic("Kafka config cannot be nil")
@@ -42,10 +46,11 @@ func NewKafka(deps *KafkaDeps) *Kafka {
 	}
 }
 
-// Name returns component identifier.
+// Name возвращает символьный идентификатор компонента.
 func (k *Kafka) Name() string { return k.name }
 
-// Start establishes producer and consumer connections and verifies broker availability.
+// Start устанавливает соединение с брокером (health-check),
+// инициализирует консюмера и продюсера и логирует параметры подключения.
 func (k *Kafka) Start(ctx context.Context) error {
 	if err := ensureKafkaConnection(ctx, k.deps.Cfg.Network, k.deps.Cfg.Address); err != nil {
 		k.deps.Log.Debug(
@@ -70,7 +75,8 @@ func (k *Kafka) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop gracefully closes consumer and producer connections.
+// Stop корректно закрывает соединения консюмера и продюсера,
+// логируя ошибки закрытия при их возникновении.
 func (k *Kafka) Stop(_ context.Context) error {
 	if k.consumer != nil {
 		if err := k.consumer.Close(); err != nil {
@@ -106,6 +112,9 @@ func (k *Kafka) Stop(_ context.Context) error {
 	return nil
 }
 
+// ensureKafkaConnection выполняет проверку доступности брокера:
+// открывает и закрывает TCP-соединение к адресу Kafka.
+// Не экспортируется намеренно.
 func ensureKafkaConnection(ctx context.Context, network, address string) error {
 	conn, err := kafka.DialContext(ctx, network, address)
 	if err != nil {
@@ -117,7 +126,8 @@ func ensureKafkaConnection(ctx context.Context, network, address string) error {
 	return nil
 }
 
-// WriteMessage pushes a message to the configured Kafka topic.
+// WriteMessage публикует одно сообщение в настроенный Kafka-топик.
+// Возвращает ошибку с обёрткой при сбое записи.
 func (k *Kafka) WriteMessage(ctx context.Context, msg []byte) error {
 	err := k.producer.WriteMessages(ctx,
 		kafka.Message{
@@ -132,7 +142,9 @@ func (k *Kafka) WriteMessage(ctx context.Context, msg []byte) error {
 	return nil
 }
 
-// StartConsuming continuously reads messages and commits offsets.
+// StartConsuming запускает непрерывное чтение сообщений из топика
+// с коммитом оффсетов. Останавливается при отмене контекста.
+// При временных ошибках чтения делает паузы и продолжает работу.
 func (k *Kafka) StartConsuming(ctx context.Context) {
 	for {
 		select {
