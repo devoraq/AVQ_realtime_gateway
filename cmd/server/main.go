@@ -1,3 +1,4 @@
+// Package main boots the realtime gateway.
 package main
 
 import (
@@ -19,7 +20,7 @@ func main() {
 	cfg := config.LoadConfig(configPath)
 	log := initLogger()
 
-	app := app.New(&app.AppDeps{
+	app := app.New(&app.Deps{
 		Log: log,
 		Cfg: cfg,
 	})

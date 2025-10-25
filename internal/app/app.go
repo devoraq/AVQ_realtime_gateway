@@ -1,8 +1,10 @@
+// Package app provides application wiring and lifecycle orchestration.
 package app
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -13,8 +15,10 @@ import (
 	"github.com/DENFNC/devPractice/internal/app/happ"
 )
 
+// App wires infrastructure adapters alongside the HTTP server and orchestrates
+// their lifecycle.
 type App struct {
-	deps *AppDeps
+	deps *Deps
 
 	happ      *happ.HTTPServer
 	container *Container
@@ -24,12 +28,15 @@ type App struct {
 	wg           sync.WaitGroup
 }
 
-type AppDeps struct {
+// Deps describes dependencies required to construct the application.
+type Deps struct {
 	Log *slog.Logger
 	Cfg *config.Config
 }
 
-func New(deps *AppDeps) *App {
+// New assembles every component, eagerly starts infrastructure adapters and
+// returns a ready-to-run application instance.
+func New(deps *Deps) *App {
 	container := NewContainer()
 
 	store := kvstore.NewRedis(&kvstore.RedisDeps{
@@ -46,7 +53,10 @@ func New(deps *AppDeps) *App {
 	defer cancel()
 
 	container.Add(store, kfk)
-	container.StartAll(ctx)
+	if err := container.StartAll(ctx); err != nil {
+		deps.Log.Error("failed to start infrastructure components", slog.String("error", err.Error()))
+		panic(fmt.Errorf("start components: %w", err))
+	}
 
 	hserver := happ.New(&happ.ServerDeps{
 		Log:   deps.Log,
@@ -61,6 +71,7 @@ func New(deps *AppDeps) *App {
 	}
 }
 
+// StartAsync runs the HTTP server in a goroutine and ensures it starts once.
 func (a *App) StartAsync() {
 	a.startOnce.Do(func() {
 		a.wg.Add(1)
@@ -71,6 +82,7 @@ func (a *App) StartAsync() {
 	})
 }
 
+// Shutdown gracefully stops the HTTP server and all registered components.
 func (a *App) Shutdown(ctx context.Context) error {
 	if ctx == nil {
 		return errors.New("app shutdown: context is nil")
@@ -78,7 +90,7 @@ func (a *App) Shutdown(ctx context.Context) error {
 
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return fmt.Errorf("app shutdown: %w", ctx.Err())
 	default:
 	}
 

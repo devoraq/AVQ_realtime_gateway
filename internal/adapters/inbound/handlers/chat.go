@@ -6,10 +6,19 @@ package handlers
 
 import (
 	"context"
-	"fmt"
+	"errors"
+	"time"
 
-	websocket "github.com/DENFNC/devPractice/internal/adapters/inbound/ws"
+	ws "github.com/DENFNC/devPractice/internal/adapters/inbound/ws"
 )
+
+// SessionStore описывает абстракцию для хранения активных WebSocket-сессий.
+// Типичная реализация использует Redis или in-memory map.
+type SessionStore interface {
+	Add(ctx context.Context, key string, value any, expiration time.Duration) error
+	Remove(ctx context.Context, keys ...string) error
+	ScanKeys(ctx context.Context, match string, step int64) (map[string]string, error)
+}
 
 // MessageType описывает тип входящего WebSocket-сообщения, который используется
 // маршрутизатором для выбора подходящего обработчика.
@@ -38,9 +47,11 @@ type ChatHandler struct {
 // сборке цепочки обработчиков.
 type ChatHandlerDeps struct {
 	Usecase ChatUsecase
-	Router  *websocket.HandlerChain
+	Router  *ws.HandlerChain
+	Store   SessionStore
 }
 
+// NewSendMessageHandler registers the handler for sending chat messages.
 func NewSendMessageHandler(deps *ChatHandlerDeps) *ChatHandler {
 	h := &ChatHandler{
 		usecase: deps.Usecase,
@@ -53,8 +64,16 @@ func NewSendMessageHandler(deps *ChatHandlerDeps) *ChatHandler {
 	return h
 }
 
-func (h *ChatHandler) SendMessage(ctx context.Context, s *websocket.Session, env websocket.Envelope) error {
-	fmt.Println(env)
-	// TODO: implement send message logic
-	return nil
+// SendMessage handles incoming send_message envelopes.
+func (h *ChatHandler) SendMessage(ctx context.Context, s *ws.Session, env ws.Envelope) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	_ = s
+	_ = env
+
+	return errors.New("chat handler not implemented yet")
 }

@@ -1,3 +1,4 @@
+// Package kafka provides helpers for Kafka adapters.
 package kafka
 
 import (
