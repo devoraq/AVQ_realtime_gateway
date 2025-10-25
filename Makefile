@@ -19,17 +19,20 @@ endif
 GOLANGCI_LINT := $(GOBIN)/golangci-lint
 
 # --- Packages / flags ---------------------------------------------------------
-PKGS       := ./...
-TEST_FLAGS ?= -race -count=1
-BUILD_DIR  ?= bin
-BIN_NAME   ?= app
+PKGS             := ./...
+TEST_FLAGS       ?= -count=1
+CONC_TEST_FLAGS  ?= -race -count=1 -vet=atomic -shuffle=on
+BUILD_DIR        ?= bin
+BIN_NAME         ?= app
+RACE_BIN         ?= $(BUILD_DIR)/$(BIN_NAME)-race
+RUN_MAIN         ?= ./cmd/server/main.go
 
 # для краткости
 define _echo
 	@printf "\033[1;36m▶ %s\033[0m\n" "$(1)"
 endef
 
-.PHONY: help deps install-tools tidy fmt fmt-check vet lint lint-fix lint-verify test cover build run clean clean-caches clean-modcache ci
+.PHONY: help deps install-tools tidy fmt fmt-check vet lint lint-fix lint-verify test test-race cover build build-race run run-race clean clean-caches clean-modcache ci
 
 # --- Help ---------------------------------------------------------------------
 help:
@@ -87,9 +90,13 @@ lint-fix: lint-verify deps ## golangci-lint --fix
 	@$(GOLANGCI_LINT) run --fix $(PKGS)
 
 # --- Tests / coverage ---------------------------------------------------------
-test: deps ## Run tests
+test: deps ## Run tests without race detector
 	$(call _echo,go test $(TEST_FLAGS))
 	@$(GO) test $(TEST_FLAGS) $(PKGS)
+
+test-race: deps ## Run tests with race detector and atomic vet checks
+	$(call _echo,go test $(CONC_TEST_FLAGS))
+	@$(GO) test $(CONC_TEST_FLAGS) $(PKGS)
 
 cover: deps ## Coverage summary (text) + report file
 	$(call _echo,coverage)
@@ -104,9 +111,18 @@ build: deps ## Build binary to ./bin/$(BIN_NAME)
 	@mkdir -p $(BUILD_DIR)
 	@$(GO) build -o $(BUILD_DIR)/$(BIN_NAME) ./...
 
+build-race: deps ## Build binary with race detector
+	$(call _echo,build race $(RACE_BIN))
+	@mkdir -p $(BUILD_DIR)
+	@$(GO) build -race -o $(RACE_BIN) ./cmd/server
+
 run: build ## Run built binary
 	$(call _echo,run $(BUILD_DIR)/$(BIN_NAME))
 	@./$(BUILD_DIR)/$(BIN_NAME)
+
+run-race: deps ## Run main package with race detector (blocking)
+	$(call _echo,go run -race $(RUN_MAIN))
+	@$(GO) run -race $(RUN_MAIN)
 
 # --- Clean --------------------------------------------------------------------
 clean: ## Remove build artifacts (not caches)
@@ -123,5 +139,5 @@ clean-modcache: ## Clean module cache (destructive)
 	-@$(GO) clean -modcache || true
 
 # --- CI pipeline convenience --------------------------------------------------
-ci: tidy fmt-check vet lint test cover ## Run full CI-like pipeline
+ci: tidy fmt-check vet lint test test-race cover ## Run full CI-like pipeline
 	$(call _echo,CI pipeline passed)

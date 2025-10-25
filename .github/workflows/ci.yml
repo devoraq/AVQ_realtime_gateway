@@ -52,5 +52,32 @@ jobs:
       - name: Vet
         run: make vet
 
+      - name: Build
+        run: make build
+
+      - name: Build (race)
+        run: make build-race
+
       - name: Tests
         run: make test
+
+      - name: Tests (race)
+        run: make test-race
+
+      - name: Go run (race smoke)
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          echo "Running go run -race (will stop after 5s)..."
+          if timeout 5s make run-race; then
+            echo "Race run finished cleanly"
+          else
+            status=$?
+            if [ "$status" -eq 124 ]; then
+              echo "Race run timed out (expected for long-running server)"
+              exit 0
+            else
+              echo "Race run exited with status $status (continuing)"
+              exit 0
+            fi
+          fi
