@@ -5,3 +5,4 @@ mcp-shell.log
 *.tfstate.*
 *.tfvars
 /web
+.cache/
