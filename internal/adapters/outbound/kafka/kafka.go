@@ -16,17 +16,19 @@ type Kafka struct {
 	name     string
 	consumer *kafka.Reader
 	producer *kafka.Writer
-	deps     *Deps
+	deps     *KafkaDeps
 }
 
-// Deps contains runtime dependencies for the Kafka adapter.
-type Deps struct {
+// KafkaDeps contains runtime dependencies for the Kafka adapter.
+//
+//nolint:revive
+type KafkaDeps struct {
 	Log *slog.Logger
 	Cfg *config.KafkaConfig
 }
 
-// NewKafka validates dependencies and prepares the adapter instance.
-func NewKafka(deps *Deps) *Kafka {
+// NewKafka validates dependencies and prepares the adapter instance
+func NewKafka(deps *KafkaDeps) *Kafka {
 	if deps.Cfg == nil {
 		panic("Kafka config cannot be nil")
 	}
