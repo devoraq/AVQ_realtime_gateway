@@ -1,13 +1,10 @@
-// Package websocket предоставляет инфраструктурный слой входящих адаптеров
-// для работы с WebSocket-соединениями, включая управление сессиями и
-// маршрутизацию сообщений. Функции пакета используются HTTP-шлюзом для
-// апгрейда соединений и дальнейшей обработки входящих событий.
-package websocket
+package ws
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 
@@ -16,18 +13,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Session инкапсулирует данные активного WebSocket-соединения и отвечает за
-// цикл чтения входящих сообщений.
-//
-// Пример инициализации:
-//
-//	conn, _, _, _ := ws.UpgradeHTTP(req, resp)
-//	router := websocket.NewHandlerChain()
-//	session, err := websocket.NewSession(conn, router)
-//	if err != nil {
-//		// обработка ошибки
-//	}
-//	go session.ReadLoop(context.Background())
+// Session keeps metadata about WebSocket connection.
 type Session struct {
 	ID     uuid.UUID
 	UserID uuid.UUID
@@ -36,18 +22,16 @@ type Session struct {
 	router Router
 }
 
-// NewSession создает новую веб-сессию, генерируя идентификаторы пользователя и
-// сессии, и связывает ее с переданным роутером. Возвращает ошибку, если
-// генерация идентификаторов не удалась.
+// NewSession constructs a session with random identifiers for tracing.
 func NewSession(conn net.Conn, router Router) (*Session, error) {
 	id, err := uuid.NewV7()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("generate session id: %w", err)
 	}
 
 	userID, err := uuid.NewRandom()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("generate user id: %w", err)
 	}
 
 	return &Session{
@@ -58,16 +42,15 @@ func NewSession(conn net.Conn, router Router) (*Session, error) {
 	}, nil
 }
 
-// Close закрывает сетевое соединение, связанное с сессией. Обычно вызывается
-// инфраструктурой после завершения ReadLoop.
+// Close terminates the underlying network connection.
 func (s *Session) Close() error {
-	return s.conn.Close()
+	if err := s.conn.Close(); err != nil {
+		return fmt.Errorf("close websocket connection: %w", err)
+	}
+	return nil
 }
 
-// ReadLoop запускает бесконечный цикл чтения входящих сообщений и делегирует
-// их обработку роутеру. Рекомендуется запускать цикл в отдельной горутине;
-// функция завершится при закрытии соединения или возникновении критической
-// ошибки чтения.
+// ReadLoop continuously reads client messages and dispatches them to router.
 func (s *Session) ReadLoop(ctx context.Context) error {
 	for {
 		msg, op, err := wsutil.ReadClientData(s.conn)
@@ -75,7 +58,7 @@ func (s *Session) ReadLoop(ctx context.Context) error {
 			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
 				return nil
 			}
-			return err
+			return fmt.Errorf("read client data: %w", err)
 		}
 
 		if err := s.handleOperation(ctx, op, msg); err != nil {
@@ -87,23 +70,29 @@ func (s *Session) ReadLoop(ctx context.Context) error {
 	}
 }
 
-// handleOperation выполняет обработку одного сообщения в зависимости от его
-// типа: текстовые кадры преобразуются в Envelope и отправляются в роутер,
-// ping-кадры получают ответ pong, а остальные типы игнорируются.
 func (s *Session) handleOperation(ctx context.Context, op ws.OpCode, payload []byte) error {
 	switch op {
 	case ws.OpText:
 		var env Envelope
 
 		if err := json.Unmarshal(payload, &env); err != nil {
-			return err
+			return fmt.Errorf("decode websocket envelope: %w", err)
 		}
 		if s.router == nil {
 			return ErrNoRouteMatched
 		}
-		return s.router.Route(ctx, s, env)
+		if err := s.router.Route(ctx, s, env); err != nil {
+			if errors.Is(err, ErrNoRouteMatched) {
+				return ErrNoRouteMatched
+			}
+			return fmt.Errorf("route websocket envelope: %w", err)
+		}
+		return nil
 	case ws.OpPing:
-		return wsutil.WriteServerMessage(s.conn, ws.OpPong, nil)
+		if err := wsutil.WriteServerMessage(s.conn, ws.OpPong, nil); err != nil {
+			return fmt.Errorf("write pong: %w", err)
+		}
+		return nil
 	default:
 		return nil
 	}

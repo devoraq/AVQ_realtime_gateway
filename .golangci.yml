@@ -1,29 +1,76 @@
-version: "2"
+version: 2
+
 run:
   timeout: 5m
   tests: true
+  modules-download-mode: mod
 
 linters:
+  default: none
   enable:
     - govet
-    - revive
     - staticcheck
     - errcheck
-    - gosimple
+    - errorlint
+    - wrapcheck
     - ineffassign
+    - unused
+    - durationcheck
+    - contextcheck
+    - containedctx
+    - noctx
+    - fatcontext
+    - copyloopvar
+    - bodyclose
+    - canonicalheader
+    - nosprintfhostport
+    - sloglint
+    - loggercheck
+    - spancheck
     - gosec
+    - bidichk
+    - asciicheck
     - gocyclo
-    - stylecheck
-    - gofmt
+    - dupl
+    - revive
+    - importas
+    - prealloc
+    - perfsprint
+    - paralleltest
+    - tparallel
+    - thelper
+    - testpackage
 
 linters-settings:
   gocyclo:
     min-complexity: 20
-  gofmt:
-    simplify: true
 
-issues:
-  exclude-use-default: false
-  exclude-dirs:
+  importas:
+    no-unaliased: false
+    no-extra-aliases: false
+
+  sloglint:
+    no-mixed-args: true
+    kv-only: true
+    static-msg: true
+
+  spancheck:
+    checks:
+      - no-extraneous
+      - end-span
+      - context-propagation
+
+exclusions:
+  generated: strict
+  paths:
     - gen
     - web
+  rules:
+    - path: '_test\\.go'
+      linters:
+        - dupl
+        - gocyclo
+        - gosec
+    - path: 'internal/adapters/inbound/handlers/chat\\.go'
+      linters:
+        - wrapcheck

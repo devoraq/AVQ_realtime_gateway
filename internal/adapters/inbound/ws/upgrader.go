@@ -1,8 +1,8 @@
-package websocket
+package ws
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -64,27 +64,35 @@ func (g *Gateway) HandleWS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to create session", http.StatusInternalServerError)
 		return
 	}
-	defer g.sessionRemove(session)
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	defer g.sessionRemove(ctx, session)
 
-	if err := g.store.Add(r.Context(), session.ID.String(), session.UserID.String(), 0); err != nil {
+	if err := g.store.Add(ctx, session.ID.String(), session.UserID.String(), 0); err != nil {
 		_ = session.Close()
 		http.Error(w, "failed to register session", http.StatusInternalServerError)
 		return
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	if err := session.ReadLoop(ctx); err != nil {
-		log.Printf("session %s read loop error: %v", session.ID, err)
+		slog.Error("websocket session read loop failed",
+			slog.String("session_id", session.ID.String()),
+			slog.String("error", err.Error()),
+		)
 	}
 }
 
-func (g *Gateway) sessionRemove(session *Session) {
-	if err := g.store.Remove(context.Background(), session.ID.String()); err != nil {
-		log.Printf("failed to remove session %s: %v", session.ID, err)
+func (g *Gateway) sessionRemove(ctx context.Context, session *Session) {
+	if err := g.store.Remove(ctx, session.ID.String()); err != nil {
+		slog.Warn("failed to remove websocket session",
+			slog.String("session_id", session.ID.String()),
+			slog.String("error", err.Error()),
+		)
 	}
 	if err := session.Close(); err != nil {
-		log.Printf("failed to close session %s: %v", session.ID, err)
+		slog.Warn("failed to close websocket session",
+			slog.String("session_id", session.ID.String()),
+			slog.String("error", err.Error()),
+		)
 	}
 }

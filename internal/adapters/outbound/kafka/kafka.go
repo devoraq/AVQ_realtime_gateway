@@ -1,11 +1,9 @@
-// Package kafka реализует инфраструктурный адаптер для взаимодействия с
-// брокером Apache Kafka, предоставляя унифицированные обертки над продюсером,
-// консьюмером и созданием топиков.
 package kafka
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -13,25 +11,22 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-// Kafka инкапсулирует состояния продюсера и консьюмера для единого доступа
-// к возможностям брокера из прикладного кода.
+// Kafka manages Kafka producer and consumer lifecycle.
 type Kafka struct {
 	name     string
 	consumer *kafka.Reader
 	producer *kafka.Writer
-	deps     *KafkaDeps
+	deps     *Deps
 }
 
-// KafkaDeps хранит основные зависимости структуры Kafka:
-// логгер и конфигурация кафки.
-type KafkaDeps struct {
+// Deps contains runtime dependencies for the Kafka adapter.
+type Deps struct {
 	Log *slog.Logger
 	Cfg *config.KafkaConfig
 }
 
-// NewKafka создает и наполняет структуру кафки базовыми полями:
-// имя компонента и его зависимости.
-func NewKafka(deps *KafkaDeps) *Kafka {
+// NewKafka validates dependencies and prepares the adapter instance.
+func NewKafka(deps *Deps) *Kafka {
 	if deps.Cfg == nil {
 		panic("Kafka config cannot be nil")
 	}
@@ -45,22 +40,19 @@ func NewKafka(deps *KafkaDeps) *Kafka {
 	}
 }
 
-// Метод Name возвращает имя компонента
+// Name returns component identifier.
 func (k *Kafka) Name() string { return k.name }
 
-// Метод Start принимает контекст, проверяет доступность соединения,
-// создает и добавляет в структуру кафки набор продюсер/консьюмер.
-// Логгирует и возвращает ошибку при наличии таковой. При успешном
-// запуске сообщит о нем и вернет nil.
+// Start establishes producer and consumer connections and verifies broker availability.
 func (k *Kafka) Start(ctx context.Context) error {
 	if err := ensureKafkaConnection(ctx, k.deps.Cfg.Network, k.deps.Cfg.Address); err != nil {
-		k.deps.Log.Error(
+		k.deps.Log.Debug(
 			"Kafka connection failed",
 			slog.String("network", k.deps.Cfg.Network),
 			slog.String("address", k.deps.Cfg.Address),
 			slog.String("error", err.Error()),
 		)
-		return err
+		return fmt.Errorf("ensure kafka connection: %w", err)
 	}
 
 	k.consumer = createReader(k.deps.Cfg.Address, k.deps.Cfg.TestTopic, k.deps.Cfg.GroupID)
@@ -76,10 +68,8 @@ func (k *Kafka) Start(ctx context.Context) error {
 	return nil
 }
 
-// Метод Stop принимает контекст, останавливает работу продюсера
-// и консьюмера, возвращает ошибку при неудаче закрытия
-// соединения. Если все прошло по плану, возвращает nil.
-func (k *Kafka) Stop(ctx context.Context) error {
+// Stop gracefully closes consumer and producer connections.
+func (k *Kafka) Stop(_ context.Context) error {
 	if k.consumer != nil {
 		if err := k.consumer.Close(); err != nil {
 			k.deps.Log.Error(
@@ -89,7 +79,7 @@ func (k *Kafka) Stop(ctx context.Context) error {
 				slog.String("topic", k.deps.Cfg.TestTopic),
 				slog.String("error", err.Error()),
 			)
-			return err
+			return fmt.Errorf("close kafka consumer: %w", err)
 		}
 	}
 
@@ -101,7 +91,7 @@ func (k *Kafka) Stop(ctx context.Context) error {
 				slog.String("topic", k.deps.Cfg.TestTopic),
 				slog.String("error", err.Error()),
 			)
-			return err
+			return fmt.Errorf("close kafka producer: %w", err)
 		}
 	}
 
@@ -114,26 +104,18 @@ func (k *Kafka) Stop(ctx context.Context) error {
 	return nil
 }
 
-// ensureKafkaConnection проверяет соединение кафки в указанной сети
-// и по указанному адресу. Возвращает ошибку если соединение не удалось,
-// в ином случае возвращает nil.
 func ensureKafkaConnection(ctx context.Context, network, address string) error {
 	conn, err := kafka.DialContext(ctx, network, address)
 	if err != nil {
-		return err
+		return fmt.Errorf("dial kafka broker %s://%s: %w", network, address, err)
 	}
-	defer conn.Close()
+	if err := conn.Close(); err != nil {
+		return fmt.Errorf("close kafka connection: %w", err)
+	}
 	return nil
 }
 
-// WriteMessage отправляет переданное сообщение через подготовленный продюсер,
-// фиксируя ошибки в журнале и возвращая их вызывающему коду.
-//
-// Пример использования:
-//
-// msg := []byte("Some message as a byte slice")
-// err := WriteMessage(ctx, msg)
-// if err != nil {*обработка ошибки*}
+// WriteMessage pushes a message to the configured Kafka topic.
 func (k *Kafka) WriteMessage(ctx context.Context, msg []byte) error {
 	err := k.producer.WriteMessages(ctx,
 		kafka.Message{
@@ -143,18 +125,12 @@ func (k *Kafka) WriteMessage(ctx context.Context, msg []byte) error {
 	)
 	if err != nil {
 		k.deps.Log.Error("kafka write message failed", "err", err)
-		return err
+		return fmt.Errorf("write kafka message: %w", err)
 	}
 	return nil
 }
 
-// StartConsuming запускает бесконечный цикл чтения сообщений для переданного
-// консьюмера. Подходит для исполнения в отдельной горутине и логирует
-// результаты обработки каждого сообщения.
-//
-// Пример использования:
-//
-// go StartConsuming(ctx)
+// StartConsuming continuously reads messages and commits offsets.
 func (k *Kafka) StartConsuming(ctx context.Context) {
 	for {
 		select {
@@ -182,7 +158,7 @@ func (k *Kafka) StartConsuming(ctx context.Context) {
 		)
 
 		if err := k.consumer.CommitMessages(ctx, m); err != nil {
-			k.deps.Log.Error("kafka commit message failed",
+			k.deps.Log.Debug("kafka commit message failed",
 				"topic", m.Topic,
 				"offset", m.Offset,
 				"err", err,
