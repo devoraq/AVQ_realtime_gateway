@@ -1,4 +1,4 @@
-version: 2
+version: "2"
 
 run:
   timeout: 5m
@@ -41,36 +41,43 @@ linters:
     - thelper
     - testpackage
 
-linters-settings:
-  gocyclo:
-    min-complexity: 20
+  settings:
+    gocyclo:
+      min-complexity: 20
 
-  importas:
-    no-unaliased: false
-    no-extra-aliases: false
+    importas:
+      no-unaliased: false
+      no-extra-aliases: false
 
-  sloglint:
-    no-mixed-args: true
-    kv-only: true
-    static-msg: true
+    sloglint:
+      no-mixed-args: true
+      kv-only: true
+      static-msg: true
 
-  spancheck:
-    checks:
-      - no-extraneous
-      - end-span
-      - context-propagation
+    spancheck:
+      checks:
+        - no-extraneous
+        - end-span
+        - context-propagation
 
-exclusions:
-  generated: strict
-  paths:
-    - gen
-    - web
-  rules:
-    - path: '_test\\.go'
-      linters:
-        - dupl
-        - gocyclo
-        - gosec
-    - path: 'internal/adapters/inbound/handlers/chat\\.go'
-      linters:
-        - wrapcheck
+    # чтобы не заваливать return ctx.Err()
+    wrapcheck:
+      ignore-sigs:
+        - '^context\.Canceled$'
+        - '^context\.DeadlineExceeded$'
+
+  # v2: исключения лежат под linters.exclusions
+  exclusions:
+    generated: strict
+    paths:
+      - gen
+      - web
+    rules:
+      - path: '_test\.go'
+        linters:
+          - dupl
+          - gocyclo
+          - gosec
+      - path: 'internal/adapters/inbound/handlers/chat\.go'
+        linters:
+          - wrapcheck
