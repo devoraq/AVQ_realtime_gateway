@@ -29,7 +29,7 @@ define _echo
 	@printf "\033[1;36m▶ %s\033[0m\n" "$(1)"
 endef
 
-.PHONY: help deps install-tools tidy fmt fmt-check vet lint lint-fix test cover build run clean clean-caches clean-modcache ci
+.PHONY: help deps install-tools tidy fmt fmt-check vet lint lint-fix lint-verify test cover build run clean clean-caches clean-modcache ci
 
 # --- Help ---------------------------------------------------------------------
 help:
@@ -72,11 +72,17 @@ vet: ## go vet
 	@$(GO) vet $(PKGS)
 
 # --- Lint ---------------------------------------------------------------------
-lint: install-tools deps ## Run golangci-lint
+lint-verify: install-tools ## Verify golangci-lint config before run
+	$(call _echo,verify golangci-lint config)
+	@set -euo pipefail; \
+	echo "Config path: $$($(GOLANGCI_LINT) config path)"; \
+	$(GOLANGCI_LINT) config verify
+
+lint: lint-verify deps ## Run golangci-lint
 	$(call _echo,golangci-lint run)
 	@$(GOLANGCI_LINT) run $(PKGS)
 
-lint-fix: install-tools deps ## golangci-lint --fix
+lint-fix: lint-verify deps ## golangci-lint --fix
 	$(call _echo,golangci-lint run --fix)
 	@$(GOLANGCI_LINT) run --fix $(PKGS)
 

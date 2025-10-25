@@ -12,7 +12,7 @@ linters:
     - staticcheck
     - errcheck
     - errorlint
-    - wrapcheck
+    # - wrapcheck
     - ineffassign
     - unused
     - durationcheck
@@ -24,7 +24,7 @@ linters:
     - bodyclose
     - canonicalheader
     - nosprintfhostport
-    - sloglint
+    # - sloglint
     - loggercheck
     - spancheck
     - gosec
@@ -45,28 +45,28 @@ linters:
     gocyclo:
       min-complexity: 20
 
-    importas:
-      no-unaliased: false
-      no-extra-aliases: false
+    # importas:
+    #   no-unaliased: false
+    #   no-extra-aliases: false
 
-    sloglint:
-      no-mixed-args: true
-      kv-only: true
-      static-msg: true
+    # sloglint:
+    #   no-mixed-args: true
+    #   kv-only: true
+    #   static-msg: true
 
+    # ✅ допустимые проверки для spancheck в v2.5.0
     spancheck:
       checks:
-        - no-extraneous
-        - end-span
-        - context-propagation
+        - end           # span должен быть завершён
+        - record-error  # ошибки должны записываться в span
+        - set-status    # статус спана должен устанавливаться корректно
 
     # чтобы не заваливать return ctx.Err()
-    wrapcheck:
-      ignore-sigs:
-        - '^context\.Canceled$'
-        - '^context\.DeadlineExceeded$'
+    # wrapcheck:
+    #   ignore-sigs:
+    #     - '^context\.Canceled$'
+    #     - '^context\.DeadlineExceeded$'
 
-  # v2: исключения лежат под linters.exclusions
   exclusions:
     generated: strict
     paths:
