@@ -1,7 +1,3 @@
-// Package config предоставляет структуры конфигурации для инфраструктурных
-// адаптеров и сервисов, а также утилиту загрузки параметров из YAML-файла.
-// Пакет служит единой точкой инициализации настроек, чтобы остальные слои
-// приложения могли полагаться на предварительно валидированные значения.
 package config
 
 import (
@@ -13,12 +9,12 @@ import (
 )
 
 // Config агрегирует все секции конфигурационного файла приложения.
-// Каждое вложенное поле отвечает за конкретный инфраструктурный компонент.
 type Config struct {
 	*AppConfig   `yaml:"app"`
 	*HTTPConfig  `yaml:"http"`
 	*RedisConfig `yaml:"redis"`
 	*KafkaConfig `yaml:"kafka"`
+	*RetryConfig `yaml:"retry"`
 }
 
 // AppConfig описывает параметры верхнеуровневого приложения
@@ -49,9 +45,15 @@ type KafkaConfig struct {
 	Network   string `yaml:"network"`
 }
 
-// LoadConfig читает конфигурационный YAML-файл и возвращает агрегированную
-// структуру Config. Функция завершит работу приложения с логированием ошибки,
-// если файл отсутствует, недоступен или содержит некорректные данные.
+// RetryConfig определяет параметры для механизма повторных попыток.
+type RetryConfig struct {
+	Attempts int           `yaml:"attempts"`
+	Initial  time.Duration `yaml:"initial"`
+	Max      time.Duration `yaml:"max"`
+	Factor   float64       `yaml:"factor"`
+	Jitter   bool          `yaml:"jitter"`
+}
+
 func LoadConfig(path string) *Config {
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) || info.IsDir() {

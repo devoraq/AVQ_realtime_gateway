@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+
+	"github.com/DENFNC/devPractice/internal/adapters/outbound/config"
+	"github.com/DENFNC/devPractice/internal/pkg/retry"
 )
 
 // Component defines a unit that can be started and stopped by the application
@@ -16,11 +20,18 @@ type Component interface {
 
 // Container keeps the collection of components and drives their lifecycle.
 type Container struct {
-	comps []Component
+	comps       []Component
+	log         *slog.Logger
+	retryConfig *config.RetryConfig
 }
 
 // NewContainer constructs the container with no registered components.
-func NewContainer() *Container { return &Container{} }
+func NewContainer(log *slog.Logger, retryConfig *config.RetryConfig) *Container {
+	return &Container{
+		log:         log,
+		retryConfig: retryConfig,
+	}
+}
 
 // Add appends one or multiple components into the container.
 func (c *Container) Add(comp ...Component) { c.comps = append(c.comps, comp...) }
@@ -30,8 +41,22 @@ func (c *Container) Add(comp ...Component) { c.comps = append(c.comps, comp...) 
 func (c *Container) StartAll(ctx context.Context) error {
 	var errs []error
 	for _, comp := range c.comps {
-		if err := comp.Start(ctx); err != nil {
-			errs = append(errs, fmt.Errorf("%s start failed: %w", comp.Name(), err))
+		component := comp
+
+		retryCfg := retry.Config{
+			Attempts: c.retryConfig.Attempts,
+			Initial:  c.retryConfig.Initial,
+			Max:      c.retryConfig.Max,
+			Factor:   c.retryConfig.Factor,
+			Jitter:   c.retryConfig.Jitter,
+		}
+
+		err := retry.Do(ctx, c.log, retryCfg, func(ctx context.Context) error {
+			return component.Start(ctx)
+		})
+
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s start failed: %w", component.Name(), err))
 		}
 	}
 	return errors.Join(errs...)

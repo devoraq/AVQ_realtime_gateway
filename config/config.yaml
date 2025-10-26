@@ -14,3 +14,10 @@ kafka:
   test-topic: "test-topic"
   group-id: "test-group"
   network: "tcp"
+
+retry:
+  attempts: 5
+  initial: 1s
+  max: 15s
+  factor: 2.0
+  jitter: true

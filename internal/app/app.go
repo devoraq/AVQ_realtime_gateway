@@ -37,7 +37,7 @@ type Deps struct {
 // New assembles every component, eagerly starts infrastructure adapters and
 // returns a ready-to-run application instance.
 func New(deps *Deps) *App {
-	container := NewContainer()
+	container := NewContainer(deps.Log, deps.Cfg.RetryConfig)
 
 	store := kvstore.NewRedis(&kvstore.RedisDeps{
 		Log: deps.Log,
@@ -49,12 +49,12 @@ func New(deps *Deps) *App {
 		Cfg: deps.Cfg.KafkaConfig,
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	container.Add(store, kfk)
 	if err := container.StartAll(ctx); err != nil {
-		deps.Log.Error("failed to start infrastructure components", slog.String("error", err.Error()))
+		deps.Log.Error("Failed to start infrastructure components after multiple retries", slog.String("error", err.Error()))
 		panic(fmt.Errorf("start components: %w", err))
 	}
 
