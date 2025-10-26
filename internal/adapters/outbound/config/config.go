@@ -59,6 +59,9 @@ type RetryConfig struct {
 	Jitter   bool          `yaml:"jitter"`
 }
 
+// LoadConfig читает конфигурационный YAML-файл и возвращает агрегированную
+// структуру Config. Функция завершит работу приложения с логированием ошибки,
+// если файл отсутствует, недоступен или содержит некорректные данные.
 func LoadConfig(path string) *Config {
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) || info.IsDir() {
