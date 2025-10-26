@@ -19,7 +19,7 @@ type Config struct {
 	*HTTPConfig  `yaml:"http"`
 	*RedisConfig `yaml:"redis"`
 	*KafkaConfig `yaml:"kafka"`
-	*RetryConfig `yaml:"retry"`
+	RetryConfig  `yaml:"retry"`
 }
 
 // AppConfig описывает параметры верхнеуровневого приложения
@@ -52,11 +52,11 @@ type KafkaConfig struct {
 
 // RetryConfig определяет параметры для механизма повторных попыток.
 type RetryConfig struct {
-	Attempts int           `yaml:"attempts"`
-	Initial  time.Duration `yaml:"initial"`
-	Max      time.Duration `yaml:"max"`
-	Factor   float64       `yaml:"factor"`
-	Jitter   bool          `yaml:"jitter"`
+	Attempts int           `yaml:"attempts" default:"3"`
+	Initial  time.Duration `yaml:"initial"  default:"1s"`
+	Max      time.Duration `yaml:"max"      default:"30s"`
+	Factor   float64       `yaml:"factor"   default:"2.0"`
+	Jitter   bool          `yaml:"jitter"   default:"true"`
 }
 
 // LoadConfig читает конфигурационный YAML-файл и возвращает агрегированную

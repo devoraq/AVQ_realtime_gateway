@@ -37,7 +37,7 @@ type Deps struct {
 // New assembles every component, eagerly starts infrastructure adapters and
 // returns a ready-to-run application instance.
 func New(deps *Deps) *App {
-	container := NewContainer(deps.Log, deps.Cfg.RetryConfig)
+	container := NewContainer(deps.Log, &deps.Cfg.RetryConfig)
 
 	store := kvstore.NewRedis(&kvstore.RedisDeps{
 		Log: deps.Log,

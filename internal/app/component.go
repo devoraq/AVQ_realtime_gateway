@@ -7,7 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/DENFNC/devPractice/internal/adapters/outbound/config"
-	"github.com/DENFNC/devPractice/internal/pkg/retry"
+	"github.com/DENFNC/devPractice/pkg/retry"
 )
 
 // Component defines a unit that can be started and stopped by the application
@@ -43,15 +43,7 @@ func (c *Container) StartAll(ctx context.Context) error {
 	for _, comp := range c.comps {
 		component := comp
 
-		retryCfg := retry.Config{
-			Attempts: c.retryConfig.Attempts,
-			Initial:  c.retryConfig.Initial,
-			Max:      c.retryConfig.Max,
-			Factor:   c.retryConfig.Factor,
-			Jitter:   c.retryConfig.Jitter,
-		}
-
-		err := retry.Do(ctx, c.log, retryCfg, func(ctx context.Context) error {
+		err := retry.Do(ctx, c.log, c.retryConfig, func(ctx context.Context) error {
 			return component.Start(ctx)
 		})
 
