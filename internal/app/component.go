@@ -10,22 +10,21 @@ import (
 	"github.com/DENFNC/devPractice/pkg/retry"
 )
 
-// Component defines a unit that can be started and stopped by the application
-// container.
+// Component описывает компонент, жизненным циклом которого управляет контейнер.
 type Component interface {
 	Name() string
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
 }
 
-// Container keeps the collection of components and drives their lifecycle.
+// Container хранит набор компонентов и управляет их жизненным циклом.
 type Container struct {
 	comps       []Component
 	log         *slog.Logger
 	retryConfig *config.RetryConfig
 }
 
-// NewContainer constructs the container with no registered components.
+// NewContainer создаёт пустой контейнер без зарегистрированных компонентов.
 func NewContainer(log *slog.Logger, retryConfig *config.RetryConfig) *Container {
 	return &Container{
 		log:         log,
@@ -33,11 +32,10 @@ func NewContainer(log *slog.Logger, retryConfig *config.RetryConfig) *Container 
 	}
 }
 
-// Add appends one or multiple components into the container.
+// Add добавляет один или несколько компонентов в контейнер.
 func (c *Container) Add(comp ...Component) { c.comps = append(c.comps, comp...) }
 
-// StartAll walks over every registered component and starts it, collecting the
-// errors if any component fails.
+// StartAll последовательно запускает компоненты, накапливая ошибки запуска.
 func (c *Container) StartAll(ctx context.Context) error {
 	var errs []error
 	for _, comp := range c.comps {
@@ -54,8 +52,7 @@ func (c *Container) StartAll(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// StopAll stops registered components in the reverse order to guarantee
-// dependencies are shut down gracefully.
+// StopAll останавливает компоненты в обратном порядке, обеспечивая корректное завершение зависимостей.
 func (c *Container) StopAll(ctx context.Context) error {
 	var errs []error
 	for i := len(c.comps) - 1; i >= 0; i-- {

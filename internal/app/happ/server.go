@@ -1,4 +1,4 @@
-// Package happ hosts the HTTP gateway server.
+// Package happ размещает HTTP-шлюз приложения.
 package happ
 
 import (
@@ -13,21 +13,21 @@ import (
 	"github.com/DENFNC/devPractice/internal/adapters/outbound/config"
 )
 
-// HTTPServer wraps net/http.Server configuration.
+// HTTPServer инкапсулирует конфигурацию net/http.Server.
 type HTTPServer struct {
 	log    *slog.Logger
 	server *http.Server
 }
 
-// ServerDeps aggregates constructor dependencies.
+// ServerDeps агрегирует зависимости, необходимые для создания сервера.
 type ServerDeps struct {
-	Log *slog.Logger
-	Cfg *config.HTTPConfig
-
-	Store websocket.SessionStore
+	Log    *slog.Logger
+	Cfg    *config.HTTPConfig
+	Router websocket.Router
+	Store  websocket.SessionStore
 }
 
-// New wires HTTP handlers and returns configured server instance.
+// New настраивает HTTP-хендлеры и возвращает готовый сервер.
 func New(deps *ServerDeps) *HTTPServer {
 	const op = "Server.NewServer"
 	log := deps.Log.With("op", op)
@@ -36,15 +36,13 @@ func New(deps *ServerDeps) *HTTPServer {
 	server := &http.Server{
 		Handler: mux,
 		Addr:    deps.Cfg.Address,
-		// Protect from Slowloris-style attacks.
+		// Защита от Slowloris-подобных атак.
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	router := websocket.NewHandlerChain()
+	gw := websocket.NewGateway(deps.Store, deps.Router)
 
-	gw := websocket.NewGateway(deps.Store, router)
-
-	mux.HandleFunc("/realtime/ws", gw.HandleWS)
+	mux.HandleFunc("/realtime/chat", gw.HandleWS)
 
 	log.Info(
 		"Successful HTTP upgraded to WebSocket",
@@ -57,7 +55,7 @@ func New(deps *ServerDeps) *HTTPServer {
 	}
 }
 
-// MustStart starts the server and panics when it fails.
+// MustStart запускает сервер и паникует при ошибке запуска.
 func (s *HTTPServer) MustStart() {
 	if err := s.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		s.log.Error(
@@ -68,7 +66,7 @@ func (s *HTTPServer) MustStart() {
 	}
 }
 
-// Start listens for incoming HTTP connections.
+// Start слушает входящие HTTP-подключения.
 func (s *HTTPServer) Start() error {
 	s.log.Info("HTTP server starting",
 		slog.String("address", s.server.Addr),
@@ -79,7 +77,7 @@ func (s *HTTPServer) Start() error {
 	return nil
 }
 
-// Stop gracefully shuts down the HTTP server.
+// Stop корректно завершает работу HTTP-сервера.
 func (s *HTTPServer) Stop(ctx context.Context) error {
 	defer s.log.Info("HTTP server stopping")
 	if err := s.server.Shutdown(ctx); err != nil {

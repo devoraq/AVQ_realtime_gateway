@@ -1,5 +1,5 @@
-// Package logger предоставляет адаптер для форматированного логирования на
-// базе slog с цветовой подсветкой и человекочитаемым выводом.
+// Package logger предоставляет адаптер, который выводит структурированные логи slog
+// в читабельном текстовом виде.
 package logger
 
 import (
@@ -14,26 +14,22 @@ import (
 	"github.com/fatih/color"
 )
 
-// PrettyHandlerOptions задает настройки для PrettyHandler и проксирует
-// стандартные аргументы slog.HandlerOptions.
+// PrettyHandlerOptions описывает настройки PrettyHandler и оборачивает slog.HandlerOptions.
 type PrettyHandlerOptions struct {
 	Opts slog.HandlerOptions
 }
 
-// PrettyHandler реализует интерфейс slog.Handler, добавляя цветовую
-// подсветку уровней и форматирование JSON-полей лога.
+// PrettyHandler реализует интерфейс slog.Handler и печатает записи в компактном виде.
 type PrettyHandler struct {
 	l *log.Logger
 }
 
-// Enabled всегда возвращает true, чтобы делегировать контроль уровней
-// верхнему slog.Logger.
+// Enabled всегда возвращает true, предоставляя slog.Logger решать, писать ли запись.
 func (h *PrettyHandler) Enabled(_ context.Context, _ slog.Level) bool {
 	return true
 }
 
-// Handle формирует финальную строку лога с подсветкой уровня и красиво
-// форматированными атрибутами записи.
+// Handle форматирует запись slog с подсветкой уровня и печатает её.
 func (h *PrettyHandler) Handle(_ context.Context, r slog.Record) error {
 	level := r.Level.String() + ":"
 
@@ -77,20 +73,18 @@ func (h *PrettyHandler) Handle(_ context.Context, r slog.Record) error {
 	return nil
 }
 
-// WithAttrs возвращает тот же обработчик, так как PrettyHandler не хранит
-// состояние дополнительных атрибутов.
+// WithAttrs возвращает обработчик без изменений, поскольку PrettyHandler не кэширует атрибуты.
 func (h *PrettyHandler) WithAttrs(_ []slog.Attr) slog.Handler {
 	return h
 }
 
-// WithGroup возвращает исходный обработчик, поскольку группировка не влияет
-// на форматирование PrettyHandler.
+// WithGroup игнорирует группировку и возвращает исходный обработчик.
 func (h *PrettyHandler) WithGroup(_ string) slog.Handler {
 	return h
 }
 
-// NewPrettyHandler создает обработчик, который выводит структурированные логи
-// slog в читабельном формате с использованием стандартного log.Logger.
+// NewPrettyHandler создаёт обработчик, который печатает структурированные логи slog
+// в дружественном для человека формате с использованием стандартного log.Logger.
 func NewPrettyHandler(
 	out io.Writer,
 	opts PrettyHandlerOptions,
@@ -133,7 +127,7 @@ func formatErrorChain(err error) []string {
 	for current != nil {
 		prefix := ""
 		if level > 0 {
-			prefix = strings.Repeat("  ", level-1) + color.YellowString("↳ ") // visually show wrapping
+			prefix = strings.Repeat("  ", level-1) + color.YellowString("? ") // визуально показывает вложенность
 		}
 		lines = append(lines, prefix+color.WhiteString(current.Error()))
 		current = errors.Unwrap(current)

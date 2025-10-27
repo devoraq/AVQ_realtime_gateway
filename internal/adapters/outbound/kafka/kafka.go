@@ -19,6 +19,8 @@ type Kafka struct {
 	consumer *kafka.Reader
 	producer *kafka.Writer
 	deps     *KafkaDeps
+
+	handlers []func(ctx context.Context, payload []byte) error
 }
 
 // KafkaDeps содержит зависимости рантайма для Kafka-адаптера:
@@ -52,6 +54,13 @@ func (k *Kafka) Name() string { return k.name }
 // Start устанавливает соединение с брокером (health-check),
 // инициализирует консюмера и продюсера и логирует параметры подключения.
 func (k *Kafka) Start(ctx context.Context) error {
+	defer k.deps.Log.Debug(
+		"Connected to Kafka",
+		slog.String("network", k.deps.Cfg.Network),
+		slog.String("address", k.deps.Cfg.Address),
+		slog.String("group_id", k.deps.Cfg.GroupID),
+		slog.String("topic", k.deps.Cfg.TestTopic),
+	)
 	if err := ensureKafkaConnection(ctx, k.deps.Cfg.Network, k.deps.Cfg.Address); err != nil {
 		k.deps.Log.Debug(
 			"Kafka connection failed",
@@ -59,19 +68,12 @@ func (k *Kafka) Start(ctx context.Context) error {
 			slog.String("address", k.deps.Cfg.Address),
 			slog.String("error", err.Error()),
 		)
-		return fmt.Errorf("ensure kafka connection: %w", err)
+		return fmt.Errorf("%w: %w", ErrEnsureConnection, err)
 	}
 
 	k.consumer = createReader(k.deps.Cfg.Address, k.deps.Cfg.TestTopic, k.deps.Cfg.GroupID)
 	k.producer = createWriter(k.deps.Cfg.Address, k.deps.Cfg.TestTopic)
 
-	k.deps.Log.Debug(
-		"Connected to Kafka",
-		slog.String("network", k.deps.Cfg.Network),
-		slog.String("address", k.deps.Cfg.Address),
-		slog.String("group_id", k.deps.Cfg.GroupID),
-		slog.String("topic", k.deps.Cfg.TestTopic),
-	)
 	return nil
 }
 
@@ -136,10 +138,18 @@ func (k *Kafka) WriteMessage(ctx context.Context, msg []byte) error {
 		},
 	)
 	if err != nil {
-		k.deps.Log.Error("kafka write message failed", "err", err)
-		return fmt.Errorf("write kafka message: %w", err)
+		k.deps.Log.Error("kafka write message failed", "err", fmt.Errorf("%w: %w", ErrWriteMessage, err))
+		return fmt.Errorf("%w: %w", ErrWriteMessage, err)
 	}
 	return nil
+}
+
+// AddDeliveryHandler регистрирует обработчик, который будет вызван после коммита сообщения.
+func (k *Kafka) AddDeliveryHandler(handler func(ctx context.Context, payload []byte) error) {
+	if handler == nil {
+		return
+	}
+	k.handlers = append(k.handlers, handler)
 }
 
 // StartConsuming запускает непрерывное чтение сообщений из топика
@@ -149,7 +159,9 @@ func (k *Kafka) StartConsuming(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			k.deps.Log.Debug("Kafka consumer stopped by context")
+			k.deps.Log.Debug("Kafka consumer stopped",
+				slog.String("err", ctx.Err().Error()),
+			)
 			return
 		default:
 		}
@@ -160,7 +172,7 @@ func (k *Kafka) StartConsuming(ctx context.Context) {
 				k.deps.Log.Debug("Kafka consumer context canceled")
 				return
 			}
-			k.deps.Log.Error("kafka read message failed", "err", err)
+			k.deps.Log.Error("kafka read message failed", "err", fmt.Errorf("%w: %w", ErrFetchMessage, err))
 
 			time.Sleep(5 * time.Second)
 			continue
@@ -175,7 +187,7 @@ func (k *Kafka) StartConsuming(ctx context.Context) {
 			k.deps.Log.Debug("kafka commit message failed",
 				"topic", m.Topic,
 				"offset", m.Offset,
-				"err", err,
+				"err", fmt.Errorf("%w: %w", ErrCommitMessage, err),
 			)
 			time.Sleep(2 * time.Second)
 			continue
@@ -184,5 +196,19 @@ func (k *Kafka) StartConsuming(ctx context.Context) {
 			"topic", m.Topic,
 			"offset", m.Offset,
 		)
+
+		for _, handler := range k.handlers {
+			if handler == nil {
+				continue
+			}
+
+			if err := handler(ctx, m.Value); err != nil {
+				k.deps.Log.Error("kafka delivery handler failed",
+					"err", err,
+					"topic", m.Topic,
+					"offset", m.Offset,
+				)
+			}
+		}
 	}
 }

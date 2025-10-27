@@ -1,4 +1,4 @@
-// Package app provides application wiring and lifecycle orchestration.
+// Package app отвечает за сборку приложения и управление его жизненным циклом.
 package app
 
 import (
@@ -9,33 +9,37 @@ import (
 	"sync"
 	"time"
 
+	"github.com/DENFNC/devPractice/internal/adapters/inbound/handlers"
+	"github.com/DENFNC/devPractice/internal/adapters/inbound/ws"
 	"github.com/DENFNC/devPractice/internal/adapters/outbound/config"
 	"github.com/DENFNC/devPractice/internal/adapters/outbound/kafka"
 	kvstore "github.com/DENFNC/devPractice/internal/adapters/outbound/store/kv-store"
 	"github.com/DENFNC/devPractice/internal/app/happ"
+	"github.com/DENFNC/devPractice/internal/usecases"
 )
 
-// App wires infrastructure adapters alongside the HTTP server and orchestrates
-// their lifecycle.
+// App объединяет инфраструктурные адаптеры с HTTP-сервером и управляет их жизненным циклом.
 type App struct {
 	deps *Deps
 
 	happ      *happ.HTTPServer
 	container *Container
+	kafka     *kafka.Kafka
 
 	startOnce    sync.Once
 	shutdownOnce sync.Once
 	wg           sync.WaitGroup
+
+	consumerCancel context.CancelFunc
 }
 
-// Deps describes dependencies required to construct the application.
+// Deps описывает зависимости, необходимые для сборки приложения.
 type Deps struct {
 	Log *slog.Logger
 	Cfg *config.Config
 }
 
-// New assembles every component, eagerly starts infrastructure adapters and
-// returns a ready-to-run application instance.
+// New собирает компоненты, запускает инфраструктурные адаптеры и возвращает готовый экземпляр.
 func New(deps *Deps) *App {
 	container := NewContainer(deps.Log, &deps.Cfg.RetryConfig)
 
@@ -43,7 +47,6 @@ func New(deps *Deps) *App {
 		Log: deps.Log,
 		Cfg: deps.Cfg.RedisConfig,
 	})
-
 	kfk := kafka.NewKafka(&kafka.KafkaDeps{
 		Log: deps.Log,
 		Cfg: deps.Cfg.KafkaConfig,
@@ -58,20 +61,45 @@ func New(deps *Deps) *App {
 		panic(fmt.Errorf("start components: %w", err))
 	}
 
-	hserver := happ.New(&happ.ServerDeps{
-		Log:   deps.Log,
-		Cfg:   deps.Cfg.HTTPConfig,
-		Store: store,
+	router := ws.NewHandlerChain()
+	notifier := ws.NewNotifier(store)
+
+	usecase := usecases.NewMessageUsecase(kfk, notifier)
+	kfk.AddDeliveryHandler(func(ctx context.Context, payload []byte) error {
+		return usecase.HandleDelivery(ctx, payload)
+	})
+	handlers.NewSendMessageHandler(&handlers.MessageHandlerDeps{
+		Usecase: usecase,
+		Router:  router,
+		Store:   store,
 	})
 
-	return &App{
-		deps:      deps,
-		container: container,
-		happ:      hserver,
+	consumerCtx, consumerCancel := context.WithCancel(context.Background())
+
+	hserver := happ.New(&happ.ServerDeps{
+		Log:    deps.Log,
+		Cfg:    deps.Cfg.HTTPConfig,
+		Store:  store,
+		Router: router,
+	})
+
+	app := &App{
+		deps:           deps,
+		container:      container,
+		happ:           hserver,
+		kafka:          kfk,
+		consumerCancel: consumerCancel,
 	}
+	app.wg.Add(1)
+	go func() {
+		defer app.wg.Done()
+		kfk.StartConsuming(consumerCtx)
+	}()
+
+	return app
 }
 
-// StartAsync runs the HTTP server in a goroutine and ensures it starts once.
+// StartAsync запускает HTTP-сервер в отдельной горутине и гарантирует однократный старт.
 func (a *App) StartAsync() {
 	a.startOnce.Do(func() {
 		a.wg.Add(1)
@@ -82,7 +110,7 @@ func (a *App) StartAsync() {
 	})
 }
 
-// Shutdown gracefully stops the HTTP server and all registered components.
+// Shutdown корректно останавливает HTTP-сервер и все зарегистрированные компоненты.
 func (a *App) Shutdown(ctx context.Context) error {
 	if ctx == nil {
 		return errors.New("app shutdown: context is nil")
@@ -96,6 +124,9 @@ func (a *App) Shutdown(ctx context.Context) error {
 
 	var errs []error
 	a.shutdownOnce.Do(func() {
+		if a.consumerCancel != nil {
+			a.consumerCancel()
+		}
 		if err := a.happ.Stop(ctx); err != nil {
 			errs = append(errs, err)
 		}
