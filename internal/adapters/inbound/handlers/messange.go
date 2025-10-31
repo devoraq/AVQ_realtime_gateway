@@ -6,18 +6,20 @@ package handlers
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	ws "github.com/DENFNC/devPractice/internal/adapters/inbound/ws"
+	"github.com/DENFNC/devPractice/internal/dto"
 )
 
 // SessionStore описывает абстракцию для хранения активных WebSocket-сессий.
 // Типичная реализация использует Redis или in-memory map.
 type SessionStore interface {
 	Add(ctx context.Context, key string, value any, expiration time.Duration) error
+	Get(ctx context.Context, key string) (string, error)
 	Remove(ctx context.Context, keys ...string) error
-	ScanKeys(ctx context.Context, match string, step int64) (map[string]string, error)
 }
 
 // MessageType описывает тип входящего WebSocket-сообщения, который используется
@@ -29,31 +31,31 @@ const (
 	MessageTypeSend MessageType = "send_message"
 )
 
-// ChatUsecase задает контракт доменной логики чата, которой пользуются
+// MessageUsecase задает контракт доменной логики чата, которой пользуются
 // входящие обработчики. Реализация должна инкапсулировать бизнес-правила,
 // валидацию и работу с хранилищем.
-type ChatUsecase interface {
-	SendMessage(userID string, message string) error
+type MessageUsecase interface {
+	SendMessage(ctx context.Context, dto *dto.MessageCreatedEvent) error
 }
 
-// ChatHandler обрабатывает события WebSocket и делегирует работу доменной
-// логике через ChatUsecase. Обработчик не знает о деталях транспорта или
+// MessageHandler обрабатывает события WebSocket и делегирует работу доменной
+// логике через MessageUsecase. Обработчик не знает о деталях транспорта или
 // формата сообщения, полагаясь на Envelope из websocket.
-type ChatHandler struct {
-	usecase ChatUsecase
+type MessageHandler struct {
+	usecase MessageUsecase
 }
 
-// ChatHandlerDeps описывает зависимости обработчика чата и используется при
+// MessageHandlerDeps описывает зависимости обработчика чата и используется при
 // сборке цепочки обработчиков.
-type ChatHandlerDeps struct {
-	Usecase ChatUsecase
+type MessageHandlerDeps struct {
+	Usecase MessageUsecase
 	Router  *ws.HandlerChain
 	Store   SessionStore
 }
 
-// NewSendMessageHandler registers the handler for sending chat messages.
-func NewSendMessageHandler(deps *ChatHandlerDeps) *ChatHandler {
-	h := &ChatHandler{
+// NewSendMessageHandler регистрирует обработчик события отправки сообщения в чат.
+func NewSendMessageHandler(deps *MessageHandlerDeps) *MessageHandler {
+	h := &MessageHandler{
 		usecase: deps.Usecase,
 	}
 
@@ -64,16 +66,14 @@ func NewSendMessageHandler(deps *ChatHandlerDeps) *ChatHandler {
 	return h
 }
 
-// SendMessage handles incoming send_message envelopes.
-func (h *ChatHandler) SendMessage(ctx context.Context, s *ws.Session, env ws.Envelope) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
+// SendMessage обрабатывает входящие конверты типа send_message.
+func (h *MessageHandler) SendMessage(ctx context.Context, _ *ws.Session, env ws.Envelope) error {
+	var dto dto.MessageCreatedEvent
+	if err := json.Unmarshal(env.Payload, &dto); err != nil {
+		return fmt.Errorf("decode send_message payload: %w", err)
 	}
-
-	_ = s
-	_ = env
-
-	return errors.New("chat handler not implemented yet")
+	if err := h.usecase.SendMessage(ctx, &dto); err != nil {
+		return fmt.Errorf("usecase send message: %w", err)
+	}
+	return nil
 }

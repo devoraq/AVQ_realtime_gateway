@@ -10,40 +10,43 @@ import (
 	"github.com/DENFNC/devPractice/pkg/retry"
 )
 
-// Component defines a unit that can be started and stopped by the application
-// container.
+// Component описывает компонент, жизненным циклом которого управляет контейнер.
 type Component interface {
 	Name() string
 	Start(ctx context.Context) error
 	Stop(ctx context.Context) error
 }
 
-// Container keeps the collection of components and drives their lifecycle.
+// Container хранит набор компонентов и управляет их жизненным циклом.
 type Container struct {
-	comps       []Component
-	log         *slog.Logger
-	retryConfig *config.RetryConfig
+	comps map[string]Component
+	log   *slog.Logger
+	cfg   *config.Config
 }
 
-// NewContainer constructs the container with no registered components.
-func NewContainer(log *slog.Logger, retryConfig *config.RetryConfig) *Container {
+// NewContainer создаёт пустой контейнер без зарегистрированных компонентов.
+func NewContainer(log *slog.Logger, cfg *config.Config) *Container {
 	return &Container{
-		log:         log,
-		retryConfig: retryConfig,
+		comps: make(map[string]Component),
+		log:   log,
+		cfg:   cfg,
 	}
 }
 
-// Add appends one or multiple components into the container.
-func (c *Container) Add(comp ...Component) { c.comps = append(c.comps, comp...) }
+// Add добавляет один или несколько компонентов в контейнер.
+func (c *Container) Add(comps ...Component) {
+	for _, comp := range comps {
+		c.comps[comp.Name()] = comp
+	}
+}
 
-// StartAll walks over every registered component and starts it, collecting the
-// errors if any component fails.
+// StartAll последовательно запускает компоненты, накапливая ошибки запуска.
 func (c *Container) StartAll(ctx context.Context) error {
 	var errs []error
 	for _, comp := range c.comps {
-		component := comp
+		component := c.comps[comp.Name()]
 
-		err := retry.Do(ctx, c.log, c.retryConfig, func(ctx context.Context) error {
+		err := retry.Do(ctx, c.cfg, func(ctx context.Context) error {
 			return component.Start(ctx)
 		})
 
@@ -54,14 +57,22 @@ func (c *Container) StartAll(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
-// StopAll stops registered components in the reverse order to guarantee
-// dependencies are shut down gracefully.
+// StopAll останавливает компоненты в обратном порядке, обеспечивая корректное завершение зависимостей.
 func (c *Container) StopAll(ctx context.Context) error {
 	var errs []error
-	for i := len(c.comps) - 1; i >= 0; i-- {
-		if err := c.comps[i].Stop(ctx); err != nil {
+	for i, comp := range c.comps {
+		if err := c.comps[comp.Name()].Stop(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("%s stop failed: %w", c.comps[i].Name(), err))
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// Get возвращает компонент по имени или ошибку, если он не зарегистрирован.
+func (c *Container) Get(name string) (any, error) {
+	component, ok := c.comps[name]
+	if !ok {
+		return nil, errors.New("компонент не существует")
+	}
+	return component, nil
 }

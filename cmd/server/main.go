@@ -1,4 +1,4 @@
-// Package main boots the realtime gateway.
+// Package main запускает realtime-gateway.
 package main
 
 import (

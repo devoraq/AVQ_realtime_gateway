@@ -44,10 +44,12 @@ type RedisConfig struct {
 // KafkaConfig содержит настройки брокера Kafka, необходимые для инициализации
 // продюсеров, консьюмеров и управления топиками.
 type KafkaConfig struct {
-	Address   string `yaml:"address"`
-	TestTopic string `yaml:"test-topic"`
-	GroupID   string `yaml:"group-id"`
-	Network   string `yaml:"network"`
+	Address       string      `yaml:"address"`
+	TestTopic     string      `yaml:"test-topic"`
+	GroupID       string      `yaml:"group-id"`
+	Network       string      `yaml:"network"`
+	FetchBackoff  RetryConfig `yaml:"fetchBackoff"`
+	CommitBackoff RetryConfig `yaml:"commitBackoff"`
 }
 
 // RetryConfig определяет параметры для механизма повторных попыток.
