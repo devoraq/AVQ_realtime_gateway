@@ -43,7 +43,7 @@ type Deps struct {
 func New(deps *Deps) *App {
 	container, store, kfk := initInfrastructure(deps)
 
-	router, consumer := initMessaging(deps, store, kfk)
+	router, consumerCtx, consumerCancel := initMessaging(deps, store, kfk)
 
 	hserver := happ.New(&happ.ServerDeps{
 		Log:    deps.Log,
@@ -57,21 +57,16 @@ func New(deps *Deps) *App {
 		container:      container,
 		happ:           hserver,
 		kafka:          kfk,
-		consumerCancel: consumer.cancel,
+		consumerCancel: consumerCancel,
 	}
 
 	app.wg.Add(1)
 	go func() {
 		defer app.wg.Done()
-		kfk.StartConsuming(consumer.ctx)
+		kfk.StartConsuming(consumerCtx)
 	}()
 
 	return app
-}
-
-type consumerControl struct {
-	ctx    context.Context
-	cancel context.CancelFunc
 }
 
 // StartAsync запускает HTTP-сервер в отдельной горутине и гарантирует однократный старт.
@@ -142,7 +137,7 @@ func initMessaging(
 	deps *Deps,
 	store *kvstore.Redis,
 	kfk *kafka.Kafka,
-) (*ws.HandlerChain, consumerControl) {
+) (*ws.HandlerChain, context.Context, context.CancelFunc) {
 	router := ws.NewHandlerChain()
 	notifier := ws.NewNotifier(store)
 
@@ -157,5 +152,5 @@ func initMessaging(
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return router, consumerControl{ctx: ctx, cancel: cancel}
+	return router, ctx, cancel
 }

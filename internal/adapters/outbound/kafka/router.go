@@ -8,18 +8,23 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
+// Handler описывает функцию, обрабатывающую событие Kafka.
 type Handler func(context.Context, events.Message) error
 
+// Router управляет маршрутизацией событий Kafka внутри адаптера.
 type Router struct {
 	handlers map[string]Handler
 }
 
+// NewRouter создаёт пустой маршрутизатор для Kafka-сообщений.
 func NewRouter() *Router { return &Router{make(map[string]Handler)} }
 
+// Handle регистрирует обработчик для указанного топика.
 func (r *Router) Handle(topic string, h Handler) {
 	r.handlers[topic] = h
 }
 
+// Dispatch преобразует kafka.Message в events.Message и передаёт его обработчику.
 func (r *Router) Dispatch(ctx context.Context, msg kafka.Message) error {
 	h, ok := r.handlers[msg.Topic]
 	if !ok {

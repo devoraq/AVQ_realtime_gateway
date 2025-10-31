@@ -68,10 +68,11 @@ func (c *Container) StopAll(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
+// Get возвращает компонент по имени или ошибку, если он не зарегистрирован.
 func (c *Container) Get(name string) (any, error) {
 	component, ok := c.comps[name]
 	if !ok {
-		return nil, fmt.Errorf("component don`t exist")
+		return nil, errors.New("компонент не существует")
 	}
 	return component, nil
 }
