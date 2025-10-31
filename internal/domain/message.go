@@ -10,7 +10,7 @@ import (
 // Message описывает минимальное доменное сообщение чата.
 type Message struct {
 	ID        uuid.UUID
-	From      string
+	With      string
 	To        string
 	Content   string
 	CreatedAt int64
@@ -22,9 +22,9 @@ func NewMessage(from, to, content string) *Message {
 
 	return &Message{
 		ID:        uid,
-		From:      from,
+		With:      from,
 		To:        to,
 		Content:   content,
-		CreatedAt: time.Now().UnixMilli(),
+		CreatedAt: time.Now().Unix(),
 	}
 }

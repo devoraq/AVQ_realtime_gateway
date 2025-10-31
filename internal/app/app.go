@@ -41,40 +41,9 @@ type Deps struct {
 
 // New собирает компоненты, запускает инфраструктурные адаптеры и возвращает готовый экземпляр.
 func New(deps *Deps) *App {
-	container := NewContainer(deps.Log, &deps.Cfg.RetryConfig)
+	container, store, kfk := initInfrastructure(deps)
 
-	store := kvstore.NewRedis(&kvstore.RedisDeps{
-		Log: deps.Log,
-		Cfg: deps.Cfg.RedisConfig,
-	})
-	kfk := kafka.NewKafka(&kafka.KafkaDeps{
-		Log: deps.Log,
-		Cfg: deps.Cfg.KafkaConfig,
-	})
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	container.Add(store, kfk)
-	if err := container.StartAll(ctx); err != nil {
-		deps.Log.Error("Failed to start infrastructure components after multiple retries", slog.String("error", err.Error()))
-		panic(fmt.Errorf("start components: %w", err))
-	}
-
-	router := ws.NewHandlerChain()
-	notifier := ws.NewNotifier(store)
-
-	usecase := usecases.NewMessageUsecase(kfk, notifier)
-	kfk.AddDeliveryHandler(func(ctx context.Context, payload []byte) error {
-		return usecase.HandleDelivery(ctx, payload)
-	})
-	handlers.NewSendMessageHandler(&handlers.MessageHandlerDeps{
-		Usecase: usecase,
-		Router:  router,
-		Store:   store,
-	})
-
-	consumerCtx, consumerCancel := context.WithCancel(context.Background())
+	router, consumer := initMessaging(deps, store, kfk)
 
 	hserver := happ.New(&happ.ServerDeps{
 		Log:    deps.Log,
@@ -88,15 +57,21 @@ func New(deps *Deps) *App {
 		container:      container,
 		happ:           hserver,
 		kafka:          kfk,
-		consumerCancel: consumerCancel,
+		consumerCancel: consumer.cancel,
 	}
+
 	app.wg.Add(1)
 	go func() {
 		defer app.wg.Done()
-		kfk.StartConsuming(consumerCtx)
+		kfk.StartConsuming(consumer.ctx)
 	}()
 
 	return app
+}
+
+type consumerControl struct {
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // StartAsync запускает HTTP-сервер в отдельной горутине и гарантирует однократный старт.
@@ -137,4 +112,50 @@ func (a *App) Shutdown(ctx context.Context) error {
 	})
 
 	return errors.Join(errs...)
+}
+
+func initInfrastructure(deps *Deps) (*Container, *kvstore.Redis, *kafka.Kafka) {
+	container := NewContainer(deps.Log, deps.Cfg)
+
+	store := kvstore.NewRedis(&kvstore.RedisDeps{
+		Log: deps.Log,
+		Cfg: deps.Cfg.RedisConfig,
+	})
+	kfk := kafka.NewKafka(&kafka.KafkaDeps{
+		Log: deps.Log,
+		Cfg: deps.Cfg,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	container.Add(store, kfk)
+	if err := container.StartAll(ctx); err != nil {
+		deps.Log.Error("Failed to start infrastructure components after multiple retries", slog.String("error", err.Error()))
+		panic(fmt.Errorf("start components: %w", err))
+	}
+
+	return container, store, kfk
+}
+
+func initMessaging(
+	deps *Deps,
+	store *kvstore.Redis,
+	kfk *kafka.Kafka,
+) (*ws.HandlerChain, consumerControl) {
+	router := ws.NewHandlerChain()
+	notifier := ws.NewNotifier(store)
+
+	usecase := usecases.NewMessageUsecase(kfk, notifier)
+	kfk.Handle(deps.Cfg.TestTopic, usecase.HandleDelivery)
+
+	handlers.NewSendMessageHandler(&handlers.MessageHandlerDeps{
+		Usecase: usecase,
+		Router:  router,
+		Store:   store,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	return router, consumerControl{ctx: ctx, cancel: cancel}
 }

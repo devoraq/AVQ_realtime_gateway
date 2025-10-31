@@ -9,6 +9,7 @@ import (
 
 	"github.com/DENFNC/devPractice/internal/domain"
 	"github.com/DENFNC/devPractice/internal/dto"
+	"github.com/DENFNC/devPractice/internal/events"
 )
 
 const deliveredMessageType = "message_delivered"
@@ -57,13 +58,13 @@ func (uc *MessageUsecase) SendMessage(ctx context.Context, dto *dto.MessageCreat
 }
 
 // HandleDelivery вызывается после подтверждения Kafka и отправляет сообщение получателю.
-func (uc *MessageUsecase) HandleDelivery(ctx context.Context, payload []byte) error {
+func (uc *MessageUsecase) HandleDelivery(ctx context.Context, event events.Message) error {
 	if uc.notifier == nil {
 		return errors.New("notifier is not configured")
 	}
 
 	var message domain.Message
-	if err := json.Unmarshal(payload, &message); err != nil {
+	if err := json.Unmarshal(event.Value, &message); err != nil {
 		return fmt.Errorf("unmarshal delivered message: %w", err)
 	}
 

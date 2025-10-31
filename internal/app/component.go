@@ -19,29 +19,34 @@ type Component interface {
 
 // Container хранит набор компонентов и управляет их жизненным циклом.
 type Container struct {
-	comps       []Component
-	log         *slog.Logger
-	retryConfig *config.RetryConfig
+	comps map[string]Component
+	log   *slog.Logger
+	cfg   *config.Config
 }
 
 // NewContainer создаёт пустой контейнер без зарегистрированных компонентов.
-func NewContainer(log *slog.Logger, retryConfig *config.RetryConfig) *Container {
+func NewContainer(log *slog.Logger, cfg *config.Config) *Container {
 	return &Container{
-		log:         log,
-		retryConfig: retryConfig,
+		comps: make(map[string]Component),
+		log:   log,
+		cfg:   cfg,
 	}
 }
 
 // Add добавляет один или несколько компонентов в контейнер.
-func (c *Container) Add(comp ...Component) { c.comps = append(c.comps, comp...) }
+func (c *Container) Add(comps ...Component) {
+	for _, comp := range comps {
+		c.comps[comp.Name()] = comp
+	}
+}
 
 // StartAll последовательно запускает компоненты, накапливая ошибки запуска.
 func (c *Container) StartAll(ctx context.Context) error {
 	var errs []error
 	for _, comp := range c.comps {
-		component := comp
+		component := c.comps[comp.Name()]
 
-		err := retry.Do(ctx, c.log, c.retryConfig, func(ctx context.Context) error {
+		err := retry.Do(ctx, c.cfg, func(ctx context.Context) error {
 			return component.Start(ctx)
 		})
 
@@ -55,10 +60,18 @@ func (c *Container) StartAll(ctx context.Context) error {
 // StopAll останавливает компоненты в обратном порядке, обеспечивая корректное завершение зависимостей.
 func (c *Container) StopAll(ctx context.Context) error {
 	var errs []error
-	for i := len(c.comps) - 1; i >= 0; i-- {
-		if err := c.comps[i].Stop(ctx); err != nil {
+	for i, comp := range c.comps {
+		if err := c.comps[comp.Name()].Stop(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("%s stop failed: %w", c.comps[i].Name(), err))
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func (c *Container) Get(name string) (any, error) {
+	component, ok := c.comps[name]
+	if !ok {
+		return nil, fmt.Errorf("component don`t exist")
+	}
+	return component, nil
 }
