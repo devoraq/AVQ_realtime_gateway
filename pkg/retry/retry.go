@@ -5,7 +5,6 @@ package retry
 import (
 	"context"
 	"crypto/rand"
-	"errors"
 	"math/big"
 	"time"
 
@@ -15,17 +14,16 @@ import (
 // Do выполняет переданную функцию fn с логикой повторных попыток.
 // Функция будет повторяться до успешного выполнения или пока не исчерпаются все попытки.
 // Поддерживает отмену через context, экспоненциальный рост задержки и случайный разброс (jitter).
-func Do(ctx context.Context, cfg *config.Config, fn func(ctx context.Context) error) (lastErr error) {
-	if cfg == nil {
-		return errors.New("retry.Do: config cannot be nil")
-	}
+func Do(ctx context.Context, cfg *config.RetryConfig, fn func(ctx context.Context) error) (lastErr error) {
+	sanitized := sanitize(cfg)
 
-	// sane defaults, если значения не заданы
-	sanitize(cfg)
+	delay := sanitized.Initial
 
-	delay := cfg.Initial
+	for attempt := 1; attempt <= sanitized.Attempts; attempt++ {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 
-	for attempt := 1; attempt <= cfg.Attempts; attempt++ {
 		err := fn(ctx)
 		if err == nil {
 			return nil
@@ -33,12 +31,12 @@ func Do(ctx context.Context, cfg *config.Config, fn func(ctx context.Context) er
 		lastErr = err
 
 		// если это была последняя попытка — выходим
-		if attempt == cfg.Attempts {
+		if attempt == sanitized.Attempts {
 			break
 		}
 
 		// считаем следующую задержку
-		delay = nextDelay(delay, cfg)
+		delay = nextDelay(delay, sanitized)
 
 		timer := time.NewTimer(delay)
 		select {
@@ -55,7 +53,7 @@ func Do(ctx context.Context, cfg *config.Config, fn func(ctx context.Context) er
 }
 
 // nextDelay возвращает увеличенный интервал с crypto-jitter.
-func nextDelay(prev time.Duration, cfg *config.Config) time.Duration {
+func nextDelay(prev time.Duration, cfg config.RetryConfig) time.Duration {
 	backoff := float64(prev) * cfg.Factor
 	if backoff > float64(cfg.Max) {
 		backoff = float64(cfg.Max)
@@ -73,17 +71,29 @@ func nextDelay(prev time.Duration, cfg *config.Config) time.Duration {
 	return time.Duration(backoff)
 }
 
-func sanitize(cfg *config.Config) {
-	if cfg.Attempts <= 0 {
-		cfg.Attempts = 3
+func sanitize(cfg *config.RetryConfig) config.RetryConfig {
+	if cfg == nil {
+		cfg = &config.RetryConfig{}
 	}
-	if cfg.Initial <= 0 {
-		cfg.Initial = time.Second
+
+	sanitized := *cfg
+
+	if sanitized.Attempts <= 0 {
+		sanitized.Attempts = 3
 	}
-	if cfg.Max <= 0 {
-		cfg.Max = 30 * time.Second
+	if sanitized.Initial <= 0 {
+		sanitized.Initial = time.Second
 	}
-	if cfg.Factor < 1 {
-		cfg.Factor = 2.0
+	if sanitized.Max <= 0 {
+		sanitized.Max = 30 * time.Second
 	}
+	if sanitized.Factor < 1 {
+		sanitized.Factor = 2.0
+	}
+
+	if sanitized.Initial > sanitized.Max {
+		sanitized.Initial = sanitized.Max
+	}
+
+	return sanitized
 }

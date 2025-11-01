@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
-	"time"
 
 	"github.com/DENFNC/devPractice/internal/adapters/inbound/handlers"
 	"github.com/DENFNC/devPractice/internal/adapters/inbound/ws"
@@ -118,10 +117,10 @@ func initInfrastructure(deps *Deps) (*Container, *kvstore.Redis, *kafka.Kafka) {
 	})
 	kfk := kafka.NewKafka(&kafka.KafkaDeps{
 		Log: deps.Log,
-		Cfg: deps.Cfg,
+		Cfg: deps.Cfg.KafkaConfig,
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	container.Add(store, kfk)

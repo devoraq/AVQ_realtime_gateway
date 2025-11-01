@@ -49,13 +49,13 @@ type Kafka struct {
 // Пример:
 //
 //	deps := &kafka.KafkaDeps{
-//		Cfg: cfg,
+//		Cfg: cfg.KafkaConfig,
 //		Log: slog.New(slog.NewJSONHandler(os.Stdout, nil)),
 //	}
 //
-//nolint:revive // осознанно оставляем имя KafkaDeps
+//nolint:revive //! осознанно оставляем имя KafkaDeps
 type KafkaDeps struct {
-	Cfg *config.Config
+	Cfg *config.KafkaConfig
 	Log *slog.Logger
 }
 
@@ -66,9 +66,9 @@ type KafkaDeps struct {
 //
 //	cfg := config.MustLoad()
 //	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-//	kfk := kafka.NewKafka(&kafka.KafkaDeps{Cfg: cfg, Log: logger})
+//	kfk := kafka.NewKafka(&kafka.KafkaDeps{Cfg: cfg.KafkaConfig, Log: logger})
 func NewKafka(deps *KafkaDeps) *Kafka {
-	if deps.Cfg == nil {
+	if deps == nil || deps.Cfg == nil {
 		panic("Kafka config cannot be nil")
 	}
 	if deps.Log == nil {
@@ -108,25 +108,26 @@ func (k *Kafka) Handle(topic string, handler Handler) {
 //		return fmt.Errorf("kafka start: %w", err)
 //	}
 func (k *Kafka) Start(ctx context.Context) error {
-	defer k.deps.Log.Debug(
-		"Connected to Kafka",
-		slog.String("network", k.deps.Cfg.Network),
-		slog.String("address", k.deps.Cfg.KafkaConfig.Address),
-		slog.String("group_id", k.deps.Cfg.GroupID),
-		slog.String("topic", k.deps.Cfg.TestTopic),
-	)
-	if err := ensureKafkaConnection(ctx, k.deps.Cfg.Network, k.deps.Cfg.KafkaConfig.Address); err != nil {
+	if err := ensureKafkaConnection(ctx, k.deps.Cfg.Network, k.deps.Cfg.Address); err != nil {
 		k.deps.Log.Debug(
 			"Kafka connection failed",
 			slog.String("network", k.deps.Cfg.Network),
-			slog.String("address", k.deps.Cfg.KafkaConfig.Address),
+			slog.String("address", k.deps.Cfg.Address),
 			slog.String("error", err.Error()),
 		)
 		return fmt.Errorf("%w: %w", ErrEnsureConnection, err)
 	}
 
-	k.consumer = createReader(k.deps.Cfg.KafkaConfig.Address, k.deps.Cfg.TestTopic, k.deps.Cfg.GroupID)
-	k.producer = createWriter(k.deps.Cfg.KafkaConfig.Address, k.deps.Cfg.TestTopic)
+	k.consumer = createReader(k.deps.Cfg.Address, k.deps.Cfg.TestTopic, k.deps.Cfg.GroupID)
+	k.producer = createWriter(k.deps.Cfg.Address, k.deps.Cfg.TestTopic)
+
+	k.deps.Log.Debug(
+		"Connected to Kafka",
+		slog.String("network", k.deps.Cfg.Network),
+		slog.String("address", k.deps.Cfg.Address),
+		slog.String("group_id", k.deps.Cfg.GroupID),
+		slog.String("topic", k.deps.Cfg.TestTopic),
+	)
 
 	return nil
 }
@@ -146,7 +147,7 @@ func (k *Kafka) Stop(_ context.Context) error {
 		if err := k.consumer.Close(); err != nil {
 			k.deps.Log.Error(
 				"Failed to close Kafka consumer connection",
-				slog.String("address", k.deps.Cfg.KafkaConfig.Address),
+				slog.String("address", k.deps.Cfg.Address),
 				slog.String("group_id", k.deps.Cfg.GroupID),
 				slog.String("topic", k.deps.Cfg.TestTopic),
 				slog.String("error", err.Error()),
@@ -159,7 +160,7 @@ func (k *Kafka) Stop(_ context.Context) error {
 		if err := k.producer.Close(); err != nil {
 			k.deps.Log.Error(
 				"Failed to close Kafka producer connection",
-				slog.String("address", k.deps.Cfg.KafkaConfig.Address),
+				slog.String("address", k.deps.Cfg.Address),
 				slog.String("topic", k.deps.Cfg.TestTopic),
 				slog.String("error", err.Error()),
 			)
@@ -169,7 +170,7 @@ func (k *Kafka) Stop(_ context.Context) error {
 
 	k.deps.Log.Debug(
 		"Kafka connections closed",
-		slog.String("address", k.deps.Cfg.KafkaConfig.Address),
+		slog.String("address", k.deps.Cfg.Address),
 		slog.String("group_id", k.deps.Cfg.GroupID),
 		slog.String("topic", k.deps.Cfg.TestTopic),
 	)
@@ -231,7 +232,7 @@ func (k *Kafka) StartConsuming(ctx context.Context) {
 		}
 	}() // безопасное закрытие
 
-	backoff := retry.NewBackoff(k.deps.Cfg)
+	backoff := retry.NewBackoff(&k.deps.Cfg.FetchBackoff)
 
 	for {
 		if ctx.Err() != nil {
@@ -282,14 +283,15 @@ func (k *Kafka) fetch(ctx context.Context) (kafka.Message, error) {
 }
 
 func (k *Kafka) commitWithRetry(ctx context.Context, m kafka.Message) error {
-	b := retry.NewBackoff(k.deps.Cfg)
-	for attempts := 0; attempts < k.deps.Cfg.CommitBackoff.Attempts; attempts++ {
+	backoff := retry.NewBackoff(&k.deps.Cfg.CommitBackoff)
+	attempts := backoff.Attempts()
+	for i := 0; i < attempts; i++ {
 		if err := k.consumer.CommitMessages(ctx, m); err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			k.deps.Log.Warn("commit retry", "attempt", attempts+1, "err", err)
-			b.Sleep(ctx)
+			k.deps.Log.Warn("commit retry", "attempt", i+1, "err", err)
+			backoff.Sleep(ctx)
 			continue
 		}
 		return nil

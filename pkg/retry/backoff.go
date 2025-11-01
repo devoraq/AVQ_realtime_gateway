@@ -10,7 +10,7 @@ import (
 // Backoff представляет собой структуру, управляющую задержками между повторными
 // попытками выполнения операции. Использует параметры из RetryConfig.
 type Backoff struct {
-	cfg   *config.Config
+	cfg   config.RetryConfig
 	delay time.Duration
 }
 
@@ -20,11 +20,11 @@ type Backoff struct {
 // Пример:
 //
 //	b := retry.NewBackoff(&config.RetryConfig{Attempts: 5, Initial: 500 * time.Millisecond})
-func NewBackoff(cfg *config.Config) *Backoff {
-	sanitize(cfg)
+func NewBackoff(cfg *config.RetryConfig) *Backoff {
+	sanitized := sanitize(cfg)
 	return &Backoff{
-		cfg:   cfg,
-		delay: cfg.Initial,
+		cfg:   sanitized,
+		delay: sanitized.Initial,
 	}
 }
 
@@ -48,4 +48,9 @@ func (b *Backoff) Sleep(ctx context.Context) {
 // определённому в конфигурации.
 func (b *Backoff) Reset() {
 	b.delay = b.cfg.Initial
+}
+
+// Attempts возвращает максимальное число повторов согласно конфигурации.
+func (b *Backoff) Attempts() int {
+	return b.cfg.Attempts
 }

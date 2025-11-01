@@ -19,17 +19,21 @@ type Component interface {
 
 // Container хранит набор компонентов и управляет их жизненным циклом.
 type Container struct {
-	comps map[string]Component
-	log   *slog.Logger
-	cfg   *config.Config
+	comps    map[string]Component
+	log      *slog.Logger
+	retryCfg *config.RetryConfig
 }
 
 // NewContainer создаёт пустой контейнер без зарегистрированных компонентов.
 func NewContainer(log *slog.Logger, cfg *config.Config) *Container {
+	var retryCfg *config.RetryConfig
+	if cfg != nil {
+		retryCfg = &cfg.RetryConfig
+	}
 	return &Container{
-		comps: make(map[string]Component),
-		log:   log,
-		cfg:   cfg,
+		comps:    make(map[string]Component),
+		log:      log,
+		retryCfg: retryCfg,
 	}
 }
 
@@ -45,15 +49,34 @@ func (c *Container) StartAll(ctx context.Context) error {
 	var errs []error
 	for _, comp := range c.comps {
 		component := c.comps[comp.Name()]
+		attempt := 0
 
-		err := retry.Do(ctx, c.cfg, func(ctx context.Context) error {
-			return component.Start(ctx)
+		err := retry.Do(ctx, c.retryCfg, func(ctx context.Context) error {
+			attempt++
+			err := component.Start(ctx)
+			if err != nil {
+				c.log.Warn("Component start attempt failed",
+					slog.String("component", component.Name()),
+					slog.String("attempt", fmt.Sprintf("%d/%d", attempt, c.retryCfg.Attempts)),
+					slog.String("error", err.Error()),
+				)
+			}
+			return fmt.Errorf("start component %q: %w", component.Name(), err)
 		})
 
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s start failed: %w", component.Name(), err))
+			continue
+		}
+
+		if attempt > 1 {
+			c.log.Info("component start succeeded after retries",
+				slog.String("component", component.Name()),
+				slog.Int("attempts", attempt),
+			)
 		}
 	}
+
 	return errors.Join(errs...)
 }
 
